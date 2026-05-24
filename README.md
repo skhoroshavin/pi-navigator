@@ -12,7 +12,7 @@ If Pi is already running, restart it or run `/reload`.
 
 ## Philosophy
 
-Pi has a session tree, that you can already navigate with `/tree`, providing precise control over context. This extension just adds a few commands for common workflows. No new subsystems, parallel processes or any magic under the hood.
+Pi has a session tree that you can already navigate with `/tree`, providing precise control over context. This extension just adds a few commands for common workflows. No new subsystems, parallel processes, or any magic under the hood.
 
 ## Commands
 
@@ -20,13 +20,13 @@ Pi has a session tree, that you can already navigate with `/tree`, providing pre
 
 Jump back to the previous user message so you can re-prompt from there. If you're already at a user message, `/undo` goes to the one before it.
 
-`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to same named command in OpenCode.
+`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode.
 
 ### `/start-branch`
 
 Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
 
-A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary - basically compressing all the context spent on the branch into a single message.
+A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message.
 
 ### `/start-fresh`
 
@@ -72,19 +72,19 @@ Same as `/return` but without the summary. The branch gets abandoned quietly. Us
 
 ## The `task` tool
 
-The commands above work on their own. You can branch, return, and undo without the LLM ever calling a tool. But sometimes it could be useful, if skills could hand you a specific prompt for the next branch. That's what `task` is for.
+The commands above work on their own. You can branch, return, and undo without the LLM ever calling a tool. But sometimes it's useful when skills hand you a prompt for the next branch. That's what `task` is for.
 
 ### How it works
 
 The LLM calls `task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
 
-When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest unconsumed `task` entry, and injects its prompt as a first message of a new branch. Later, when user uses `/return`, a `task-done` marker is injected, preventing task from being picked up again.
+When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest unconsumed `task` entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from being picked up again.
 
 Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) gets picked up first. The first one waits underneath until that one is consumed.
 
 ### `/clear-task`
 
-Discard the active task without executing it, inserting `task-done` marker.
+Discard the active task without executing it, inserting a `task-done` marker.
 
 ## Example workflows
 
@@ -111,11 +111,11 @@ LLM:     [reads summary] Based on the zod recursive schema
          depth guard. Want me to implement it?
 ```
 
-The spike work gets compacted into a summary and folded back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth. You got the answer without polluting the main context.
+The spike work gets compacted into a summary and folded back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth. You get the answer without polluting the main context.
 
 ### Skill-driven review
 
-Skills, aware of this extension, can ask the LLM to get a fresh perspective before committing to something. Here's how that could look like with `task` and `/start-fresh`.
+Skills, aware of this extension, can ask the LLM to get a fresh perspective before committing to something. Here's what that looks like with `task` and `/start-fresh`.
 
 ```
 LLM:     I have written the spec. Before we proceed, let me queue
