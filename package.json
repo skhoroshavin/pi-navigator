@@ -1,6 +1,6 @@
 {
   "name": "pi-navigator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Navigation extension for Pi: session checkpointing, branch management and push-task tool",
   "type": "module",
   "scripts": {
