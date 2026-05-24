@@ -1,0 +1,40 @@
+{
+  "name": "pi-navigator",
+  "version": "0.0.1",
+  "description": "Navigation extension for Pi: task tool, branch management, and session checkpointing",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint '**/*.ts'",
+    "fix": "eslint '**/*.ts' --fix",
+    "test": "tsx --test '**/*.test.ts'",
+    "verify": "npm run lint && npx tsc --noEmit && npm test && npm pack --dry-run"
+  },
+  "keywords": ["pi-package", "pi", "pi-extension", "navigation"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skhoroshavin/pi-navigator.git"
+  },
+  "homepage": "https://github.com/skhoroshavin/pi-navigator#readme",
+  "bugs": {
+    "url": "https://github.com/skhoroshavin/pi-navigator/issues"
+  },
+  "license": "MIT",
+  "files": ["index.ts", "scripts", "README.md", "LICENSE"],
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@types/node": "^25.9.1",
+    "eslint": "^10.4.0",
+    "eslint-plugin-unslop": "^0.7.3",
+    "tsx": "^4.0.0",
+    "typebox": "^1.1.38",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.4"
+  }
+}
