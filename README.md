@@ -34,30 +34,25 @@ Like `/start-branch`, but jumps to a fresh context first - the point in the sess
 
 Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary.
 
+**Before `/start-fresh`:**
+
 ```
-Before /start-fresh:
 root
 └─ user: "Let's design feature X"
    assistant: [design discussion...]
    assistant: "Design done, ready for a review."
    user: "/start-fresh"
+```
 
-After /start-fresh:
+**After `/start-fresh`:**
+
+```
 root
 ├─ [main branch still there, but LLM doesn't see it]
 └─ checkpoint: { returnTo: main-branch-leaf }    ← sits before first user message
    user: "Review the spec at docs/specs/feature-design.md for completeness and consistency."
    assistant: [review findings]
    user: "/return"
-
-After /return:
-root
-├─ [review branch still there, but LLM no longer sees it]
-└─ user: "Let's design feature X"
-   assistant: [design discussion...]
-   assistant: "Design done, ready for a review."
-   [branch summary]                        ← /return appends summary here
-   assistant: [incorporates review findings, continues]
 ```
 
 ### `/return`
@@ -88,6 +83,29 @@ Discard the active task without executing it, inserting a `task-done` marker.
 
 ## Example workflows
 
+### Fixing a wrong turn
+
+`/undo` jumps back to your previous prompt. Use it when the LLM misunderstood, went down a tangent, or you want to rephrase your question.
+
+```
+You:     Write a React component that fetches user data and
+         displays it in a table with sorting.
+
+LLM:     Let me build a full data grid with server-side
+         pagination, column resizing, virtual scrolling,
+         and export to CSV. First, we'll need...
+
+You:     /undo
+Pi:      [jumps back to your previous message]
+
+You:     Write a React component that fetches user data and
+         displays it in a table with sorting. Client-side
+         only, no extra features — I just need a simple table.
+
+LLM:     Got it. Here's a simple table component with
+         client-side sorting and data fetching.
+```
+
 ### Spike investigation
 
 You're working on a feature and realize you need to explore how a library handles edge cases before committing to an approach.
@@ -112,6 +130,56 @@ LLM:     [reads summary] Based on the zod recursive schema
 ```
 
 The spike work gets compacted into a summary and folded back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth. You get the answer without polluting the main context.
+
+### Abandoning a dead end
+
+`/cancel` is like `/return` but without a summary. Use it when the investigation was a dead end or you changed direction — the main branch picks up as if the branch never happened.
+
+```
+You:     /start-branch
+Pi:      Ready to work on this branch.
+
+You:     Can we parse the config with a custom grammar
+         instead of JSON?
+
+LLM:     [investigates parser generators, tries a few]
+LLM:     This would add ~200KB to the bundle and the
+         grammar gets complex with nested structures.
+         JSON with schema validation is probably better.
+
+You:     Yeah, not worth it. /cancel
+Pi:     Cancelled. Branch abandoned without summary.
+
+LLM:     [continues on main branch where you left off]
+```
+
+### Skill-driven spike
+
+Skills can queue work with the `task` tool. The LLM calls `task()` to store a prompt, then you run `/start-branch` to pick it up. Unlike `/start-fresh`, this keeps your current context — useful when the spike needs awareness of what you've been discussing.
+
+```
+LLM:     Before we implement, let me queue a quick
+         compatibility check.
+
+LLM:     [calls task({ prompt: "Check whether library X
+         supports tree-shaking with our bundler config.
+         Report findings." })]
+
+LLM:     Task stored. Run /start-branch to begin.
+
+You:     /start-branch
+Pi:      [injects task prompt as first message of new branch]
+
+LLM:     [investigates] Library X supports tree-shaking
+         out of the box with our config. No changes needed.
+
+You:     /return
+Pi:     [summarizes findings, marks task done]
+Pi:     Returned. Branch summary attached.
+
+LLM:     [reads summary] Great, no compatibility issues.
+         Let's proceed.
+```
 
 ### Skill-driven review
 
