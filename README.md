@@ -56,7 +56,7 @@ When you later run `/start-branch` or `/start-fresh`, the command searches backw
 
 Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) gets picked up first. The first one waits underneath until that one is consumed.
 
-### `/clear-task`
+### `/discard-task`
 
 Discard the active task without executing it, inserting a `task-done` marker.
 
