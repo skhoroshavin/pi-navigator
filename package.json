@@ -1,6 +1,6 @@
 {
   "name": "pi-navigator",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Navigation extension for Pi: task tool, branch management, and session checkpointing",
   "type": "module",
   "scripts": {
@@ -9,7 +9,12 @@
     "test": "tsx --test '**/*.test.ts'",
     "verify": "npm run lint && npx tsc --noEmit && npm test && npm pack --dry-run"
   },
-  "keywords": ["pi-package", "pi", "pi-extension", "navigation"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "navigation"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/skhoroshavin/pi-navigator.git"
@@ -19,9 +24,16 @@
     "url": "https://github.com/skhoroshavin/pi-navigator/issues"
   },
   "license": "MIT",
-  "files": ["index.ts", "scripts", "README.md", "LICENSE"],
+  "files": [
+    "index.ts",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
