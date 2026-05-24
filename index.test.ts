@@ -10,7 +10,7 @@ import registerNavigationCommands, {
   createTaskTool,
   createStartFreshCommand,
   createCancelCommand,
-  createClearTaskCommand,
+  createDiscardTaskCommand,
   createUndoCommand,
 } from './index.js';
 
@@ -225,12 +225,12 @@ function assertNoCheckpoint(sm: SessionManager): void {
   assert.strictEqual(cp, null, `Expected no checkpoint, but found one: ${JSON.stringify(cp)}`);
 }
 
-describe('createClearTaskCommand', () => {
+describe('createDiscardTaskCommand', () => {
   it('notifies when there is no pending task', async () => {
     const { pi, ctx, notifications } = makeHarness();
     ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
 
-    const cmd = createClearTaskCommand(pi);
+    const cmd = createDiscardTaskCommand(pi);
     await cmd.handler('', ctx);
 
     assertLastNotification(notifications, 'warning', 'No pending task.');
@@ -242,7 +242,7 @@ describe('createClearTaskCommand', () => {
     ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'first task' });
     ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'second task' });
 
-    const cmd = createClearTaskCommand(pi);
+    const cmd = createDiscardTaskCommand(pi);
     await cmd.handler('', ctx);
 
     const entries = ctx.sessionManager.getEntries();
@@ -260,7 +260,7 @@ describe('createClearTaskCommand', () => {
     ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
     ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'only task' });
 
-    const cmd = createClearTaskCommand(pi);
+    const cmd = createDiscardTaskCommand(pi);
     await cmd.handler('', ctx);
 
     assertNoActiveTask(ctx.sessionManager);
@@ -458,7 +458,7 @@ describe('registration', () => {
       { type: 'command', name: 'start-fresh', description: 'Start the active task in a fresh context' },
       { type: 'command', name: 'return', description: 'Return to the checkpoint for the current task branch' },
       { type: 'command', name: 'cancel', description: 'Return without summarizing the current task branch' },
-      { type: 'command', name: 'clear-task', description: 'Discard the active task without executing it' },
+      { type: 'command', name: 'discard-task', description: 'Discard the active task without executing it' },
       { type: 'command', name: 'undo', description: 'Jump to the previous user message to re-prompt' },
     ]);
   });
@@ -582,11 +582,11 @@ describe('integration: edge cases from design spec', () => {
     assert.ok(n.message.includes('Ready to work'));
   });
 
-  it('/clear-task with no pending task notifies', async () => {
+  it('/discard-task with no pending task notifies', async () => {
     const { pi, ctx, notifications } = makeHarness();
     ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
 
-    const cmd = createClearTaskCommand(pi);
+    const cmd = createDiscardTaskCommand(pi);
     await cmd.handler('', ctx);
 
     assertLastNotification(notifications, 'warning', 'No pending task.');
@@ -645,8 +645,8 @@ describe('integration: edge cases from design spec', () => {
     pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'first task' });
     pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'second task' });
 
-    const clearCmd = createClearTaskCommand(pi);
-    await clearCmd.handler('', ctx);
+    const discardCmd = createDiscardTaskCommand(pi);
+    await discardCmd.handler('', ctx);
 
     const task = assertActiveTask(ctx.sessionManager);
     assert.strictEqual(task.prompt, 'first task');

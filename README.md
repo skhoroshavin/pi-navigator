@@ -1,6 +1,6 @@
 # pi-navigator
 
-Navigation extension for [Pi](https://pi.dev) — session tree navigation from slash commands.
+Commands for common patterns when navigating [Pi](https://pi.dev) session tree.
 
 ## Install
 
@@ -12,87 +12,85 @@ If Pi is already running, restart it or run `/reload`.
 
 ## Philosophy
 
-Pi has a session tree, that allows very flexible navigation and context control using /tree command. This extension is just adding some additional easy-to-use commands for typical tasks. It is not yet another subagent framework - focus is on retaining user control, while improving the overall experience.
+Pi has a session tree you can already navigate with `/tree`, so you can control your context. This extension just adds a few commands for common workflows. No new subsystems, parallel processes, or any magic under the hood.
 
 ## Commands
 
 ### `/undo`
 
-Jump back to the previous user message so you can re-prompt from there. If you are already at a user message, `/undo` goes to the one before it.
+Jump back to the previous user message so you can re-prompt from there. If you're already at a user message, `/undo` goes to the one before it.
 
-This is mostly about fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try again with a different prompt. `/undo` drops you at the last point where you gave input. No summary, no checkpoint — just navigation.
+`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode. [Example](#fixing-a-wrong-turn).
 
 ### `/start-branch`
 
-Mark your current position as a return point and keep working on the same branch. Run this when you want to do a spike, an investigation, or any focused piece of work within your existing context.
+Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
 
-Behind the scenes, a checkpoint entry gets saved at your current position in the session tree. You get a notification and can start working. When you are done, `/return` brings you back to the checkpoint with a summary. `/cancel` brings you back without one.
+This saves a checkpoint at your current position in the session tree. You get a notification and can keep working. When you're done, `/return` jumps you back to the checkpoint with a summary, compressing the branch into a single message. See the [example](#spike-investigation).
 
 ### `/start-fresh`
 
-Like `/start-branch`, but jumps to a fresh context first — the point in the session just before the first user message. The LLM sees a clean slate. Your existing conversation is still there, but invisible to this branch.
+Like `/start-branch`, but jumps to a fresh context first - the point in the session just before the first user message. The LLM sees a clean context. Your existing conversation is still there, just invisible to this branch.
 
-This is useful for reviews, design work, or anything that benefits from not being influenced by the conversation so far. The checkpoint that gets created points back to where you were on the main branch, so `/return` always brings you home.
-
-```
-Before /start-fresh:
-root
-└─ user: "Let's design feature X"
-   └─ assistant: [design discussion...]
-      └─ assistant: "Let me review what we have so far. Run /start-fresh."
-
-After /start-fresh:
-root
-├─ [main branch continues...]
-└─ checkpoint: { returnTo: main-branch-leaf }    ← sits before first user message
-   └─ user: "Review the spec at docs/specs/feature-design.md
-            for completeness and consistency."
-      └─ assistant: [review findings]
-         └─ assistant: "Done. Run /return."
-
-After /return:
-root
-└─ user: "Let's design feature X"
-   └─ assistant: [design discussion...]
-      └─ assistant: "Let me review what we have so far. Run /start-fresh."
-      └─ [branch summary]                        ← /return appends summary here
-      └─ assistant: [incorporates review findings, continues]
-```
+Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. See the [example](#fresh-context-review).
 
 ### `/return`
 
-Walk back to the closest checkpoint and attach a branch summary. The LLM on the main branch can read the summary and pick up where you left off.
+Jump back to the nearest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
 
-Run this when you are done with a sub-branch and want the findings folded back into the main line of work.
+Run this when your branch work is done and you want the findings folded into the main conversation. Shown in every [branching example](#spike-investigation).
 
 ### `/cancel`
 
-Same as `/return` but without the summary. The branch gets abandoned quietly. Use this when the investigation turned out to be a dead end or you just changed your mind.
+Same as `/return` but without the summary. The branch is just dropped. Use this when the investigation was a dead end or you changed your mind. See the [example](#abandoning-a-dead-end).
 
 ## The `task` tool
 
-The commands above work on their own — you can branch, return, and undo without the LLM ever calling a tool. But skills and structured workflows often need the LLM to hand you a specific prompt for the next branch. That is what `task` does.
+The commands above work on their own. You can branch, return, and undo without the LLM ever calling a tool. But sometimes it's useful when skills hand you a prompt for the next branch. The `task` tool handles this use case.
 
 ### How it works
 
-The LLM calls `task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens. No navigation, no branching, no context switch. The tool just says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
+The LLM calls `task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
 
-When you later run `/start-branch` or `/start-fresh`, the command walks backward from the current leaf, finds the nearest unconsumed `task` entry, and injects its prompt. Each task gets consumed by exactly one `/start-*` or `/clear-task` call — a `task-done` marker prevents it from being picked up again.
+When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest pending `task` entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
 
-Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) gets picked up first. The first one waits underneath until that one is consumed.
+Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
 
-### `/clear-task`
+### `/discard-task`
 
-Discard the active task without executing it. Pairs with the `task` tool the same way `/cancel` pairs with `/return`: sometimes you just want to say "never mind" and move on.
+Discard the active task without executing it, inserting a `task-done` marker.
 
 ## Example workflows
 
-### Spike investigation
+### Fixing a wrong turn
 
-You are working on a feature and realize you need to explore how a library handles edge cases before committing to an approach. No task tool needed — just run `/start-branch`.
+`/undo` jumps back to your previous prompt. Use it when the LLM misunderstood, went down a tangent, or you want to rephrase your question.
 
 ```
-You:     /start-branch
+You:     Write a React component that fetches user data and
+         displays it in a table with sorting.
+
+LLM:     Let me build a full data grid with server-side
+         pagination, column resizing, virtual scrolling,
+         and export to CSV. First, we'll need...
+
+You:     /undo
+Pi:      [jumps back to your previous message]
+
+You:     Write a React component that fetches user data and
+         displays it in a table with sorting. Client-side
+         only, no extra features — I just need a simple table.
+
+LLM:     Got it. Here's a simple table component with
+         client-side sorting and data fetching.
+```
+
+### Spike investigation
+
+You're working on a feature and realize you need to explore how a library handles edge cases before committing to an approach.
+
+```
+You:     /start-branch (or /start-fresh)
 Pi:      Ready to work on this branch. Use /return or /cancel when done.
 
 You:     How does zod handle recursive schemas? Show me examples.
@@ -110,11 +108,60 @@ LLM:     [reads summary] Based on the zod recursive schema
          depth guard. Want me to implement it?
 ```
 
-The spike work got compacted into a summary and folded back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth of the exploration itself. You got the answer you needed without polluting the main context.
+The spike compacts into a summary and folds back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth — you get the answer without polluting the main context.
+
+### Abandoning a dead end
+
+`/cancel` is like `/return` but without a summary. Use it when the investigation was a dead end or you changed direction — the main branch picks up as if the branch never happened.
+
+```
+You:     /start-branch
+Pi:      Ready to work on this branch.
+
+You:     Can we parse the config with a custom grammar
+         instead of JSON?
+
+LLM:     [investigates parser generators, tries a few]
+LLM:     This would add ~200KB to the bundle and the
+         grammar gets complex with nested structures.
+         JSON with schema validation is probably better.
+
+You:     Yeah, not worth it. /cancel
+Pi:     Cancelled. Branch abandoned without summary.
+
+LLM:     [continues on main branch where you left off]
+```
+
+### Fresh-context review
+
+`/start-fresh` jumps to a clean context so the LLM reads your work with fresh eyes. No prior conversation to anchor to — ideal for reviewing specs, designs, or code before committing to implementation.
+
+```
+You:     /start-fresh
+Pi:      Ready to work on this branch. Use /return or /cancel
+         when done.
+
+You:     Review docs/specs/feature-design.md for completeness,
+         consistency, and scope. Flag anything that needs
+         clarification.
+
+LLM:     [reads spec with no prior conversation bias]
+LLM:     Found 3 issues: the error handling section is
+         underspecified, the API surface has grown beyond
+         the original scope, and the migration path for
+         existing users is missing.
+
+You:     /return
+Pi:     [navigates back, appends summary]
+Pi:     Returned. Branch summary attached.
+
+LLM:     [reads summary] Good catches. Let me fix the error
+         handling section first, then we can discuss scope.
+```
 
 ### Skill-driven review
 
-Many skills from pi-supergsd (brainstorming, code review, writing plans) ask the LLM to get a fresh perspective before committing to something. Here is what that looks like with `task` and `/start-fresh`.
+Skills, aware of this extension, can ask the LLM to get a fresh perspective before committing to something. Here's what that looks like with `task` and `/start-fresh`.
 
 ```
 LLM:     I have written the spec. Before we proceed, let me queue
@@ -122,7 +169,8 @@ LLM:     I have written the spec. Before we proceed, let me queue
 
 LLM:     [calls task({ prompt: "Review docs/specs/feature-design.md
          for completeness, consistency, scope, and YAGNI. Flag
-         anything that needs clarification." })]
+         anything that needs clarification. Ask user to run /return
+         when done." })]
 
 LLM:     Task stored. Run /start-fresh for a fresh review.
 
@@ -145,57 +193,7 @@ LLM:     [reads summary] Good catches. Let me fix the error
          handling section first, then we can discuss scope.
 ```
 
-Because the review ran in a fresh context, the LLM was not anchored to the decisions made during spec writing. It read the document as if coming to it cold, which is exactly what you want from a review.
-
-### Nested fresh-context flow (design → plan → implement)
-
-For structured workflows with multiple phases, you can chain `/start-fresh` calls. Each phase gets a clean context, and summaries bring the results back to the main branch as you go.
-
-```
-Main branch:
-
-LLM:     [calls task({ prompt: "Design the authentication module.
-         Produce a spec at docs/specs/auth-design.md." })]
-LLM:     Run /start-fresh to begin the design phase.
-
-You:     /start-fresh
-
-Fresh branch (design):
-LLM:     [writes design spec, commits it]
-LLM:     Design done. Run /return.
-
-You:     /return    ← back on main branch with design summary
-
-Main branch:
-LLM:     Design looks solid. Let me queue the planning phase.
-LLM:     [calls task({ prompt: "Read docs/specs/auth-design.md
-         and produce an implementation plan." })]
-LLM:     Run /start-fresh to begin planning.
-
-You:     /start-fresh
-
-Fresh branch (planning):
-LLM:     [writes implementation plan, commits it]
-LLM:     Plan done. Run /return.
-
-You:     /return    ← back on main branch with plan summary
-
-Main branch:
-LLM:     Plan covers all the edge cases. Implementation time.
-LLM:     [calls task({ prompt: "Implement the auth module
-         following docs/plans/auth-plan.md." })]
-LLM:     Run /start-fresh to begin implementation.
-
-You:     /start-fresh
-
-Fresh branch (implementation):
-LLM:     [writes code, writes tests, commits]
-LLM:     Implementation complete. Run /return.
-
-You:     /return    ← back on main branch, all phases summarized
-```
-
-Each phase got a clean slate. The design phase was not influenced by planning concerns. The planning phase saw the design summary but not the design conversation. The implementation phase saw the plan summary but not the planning back-and-forth. The main branch accumulated structured summaries at each step.
+Because the review ran in a fresh context, the LLM wasn't anchored to the decisions made during spec writing. It read the document cold.
 
 ## License
 

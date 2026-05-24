@@ -15,7 +15,7 @@ export default function registerNavigationCommands(pi: ExtensionAPI): void {
   pi.registerCommand('start-fresh', createStartFreshCommand(pi));
   pi.registerCommand('return', createReturnCommand(pi));
   pi.registerCommand('cancel', createCancelCommand(pi));
-  pi.registerCommand('clear-task', createClearTaskCommand(pi));
+  pi.registerCommand('discard-task', createDiscardTaskCommand(pi));
   pi.registerCommand('undo', createUndoCommand());
 }
 
@@ -161,7 +161,7 @@ export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
   };
 }
 
-export function createClearTaskCommand(pi: ExtensionAPI): CommandOptions {
+export function createDiscardTaskCommand(pi: ExtensionAPI): CommandOptions {
   return {
     description: 'Discard the active task without executing it',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -175,7 +175,7 @@ export function createClearTaskCommand(pi: ExtensionAPI): CommandOptions {
 
       pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
 
-      ctx.ui.notify('Task cleared.', 'info');
+      ctx.ui.notify('Task discarded.', 'info');
     },
   };
 }
