@@ -31,7 +31,7 @@ export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
     parameters: pushTaskParameters,
     async execute(_toolCallId, params, signal) {
       if (signal?.aborted) {
-        throw new Error('Push-task storage aborted.');
+        throw new Error('Task storage aborted.');
       }
 
       pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt });

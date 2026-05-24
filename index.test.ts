@@ -23,7 +23,7 @@ import {
 } from './index.js';
 
 describe('createPushTaskTool', () => {
-  it('registers as push-task, stores a task entry, and returns instruction text', async () => {
+  it('pushes a task entry, and returns instruction text', async () => {
     const { pi, ctx, sm } = makeHarness();
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
 
