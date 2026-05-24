@@ -44,17 +44,17 @@ Run this when your branch work is done and you want the findings folded into the
 
 Same as `/return` but without the summary. The branch is just dropped. Use this when the investigation was a dead end or you changed your mind. See the [example](#abandoning-a-dead-end).
 
-## The `task` tool
+## The `push-task` tool
 
-The commands above work on their own. You can branch, return, and undo without the LLM ever calling a tool. But sometimes it's useful when skills hand you a prompt for the next branch. The `task` tool handles this use case.
+The commands above work on their own. You can branch, return, and undo without the LLM ever calling a tool. But sometimes it's useful when skills hand you a prompt for the next branch. The `push-task` tool handles this use case.
 
 ### How it works
 
-The LLM calls `task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
+The LLM calls `push-task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
 
-When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest pending `task` entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
+When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest pending task entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
 
-Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
+Multiple tasks can stack. If the LLM calls `push-task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
 
 ### `/discard-task`
 
@@ -161,13 +161,13 @@ LLM:     [reads summary] Good catches. Let me fix the error
 
 ### Skill-driven review
 
-Skills, aware of this extension, can ask the LLM to get a fresh perspective before committing to something. Here's what that looks like with `task` and `/start-fresh`.
+Skills, aware of this extension, can ask the LLM to get a fresh perspective before committing to something. Here's what that looks like with `push-task` and `/start-fresh`.
 
 ```
 LLM:     I have written the spec. Before we proceed, let me queue
          a fresh-context review.
 
-LLM:     [calls task({ prompt: "Review docs/specs/feature-design.md
+LLM:     [calls push-task({ prompt: "Review docs/specs/feature-design.md
          for completeness, consistency, scope, and YAGNI. Flag
          anything that needs clarification. Ask user to run /return
          when done." })]
