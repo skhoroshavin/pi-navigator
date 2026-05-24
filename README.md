@@ -20,29 +20,29 @@ Pi has a session tree that you can already navigate with `/tree`, providing prec
 
 Jump back to the previous user message so you can re-prompt from there. If you're already at a user message, `/undo` goes to the one before it.
 
-`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode.
+`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode. See the [example](#fixing-a-wrong-turn).
 
 ### `/start-branch`
 
 Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
 
-A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message.
+A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message. See it in action: [manual](#spike-investigation) or [skill-driven](#skill-driven-spike).
 
 ### `/start-fresh`
 
 Like `/start-branch`, but jumps to a fresh context first - the point in the session just before the first user message. The LLM sees a clean context. Your existing conversation is still there, just invisible to this branch.
 
-Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary.
+Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. See it in action: [manual](#fresh-context-review) or [skill-driven](#skill-driven-review).
 
 ### `/return`
 
 Walk back to the closest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
 
-Run this when you're done with a sub-branch and want the findings folded back into the main line of work.
+Run this when you're done with a sub-branch and want the findings folded back into the main line of work. Shown in every [branching example](#spike-investigation).
 
 ### `/cancel`
 
-Same as `/return` but without the summary. The branch gets abandoned quietly. Use this when the investigation was a dead end or you changed your mind.
+Same as `/return` but without the summary. The branch gets abandoned quietly. Use this when the investigation was a dead end or you changed your mind. See the [example](#abandoning-a-dead-end).
 
 ## The `task` tool
 
