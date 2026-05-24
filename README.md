@@ -26,7 +26,7 @@ Jump back to the previous user message so you can re-prompt from there. If you'r
 
 Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
 
-A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message. See it in action: [manual](#spike-investigation) or [skill-driven](#skill-driven-spike).
+A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message. See the [example](#spike-investigation).
 
 ### `/start-fresh`
 
@@ -157,34 +157,6 @@ Pi:     Returned. Branch summary attached.
 
 LLM:     [reads summary] Good catches. Let me fix the error
          handling section first, then we can discuss scope.
-```
-
-### Skill-driven spike
-
-Skills can queue work with the `task` tool. The LLM calls `task()` to store a prompt, then you run `/start-branch` to pick it up. Unlike `/start-fresh`, this keeps your current context — useful when the spike needs awareness of what you've been discussing.
-
-```
-LLM:     Before we implement, let me queue a quick
-         compatibility check.
-
-LLM:     [calls task({ prompt: "Check whether library X
-         supports tree-shaking with our bundler config.
-         Report findings." })]
-
-LLM:     Task stored. Run /start-branch to begin.
-
-You:     /start-branch
-Pi:      [injects task prompt as first message of new branch]
-
-LLM:     [investigates] Library X supports tree-shaking
-         out of the box with our config. No changes needed.
-
-You:     /return
-Pi:     [summarizes findings, marks task done]
-Pi:     Returned. Branch summary attached.
-
-LLM:     [reads summary] Great, no compatibility issues.
-         Let's proceed.
 ```
 
 ### Skill-driven review
