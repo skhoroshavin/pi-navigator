@@ -12,7 +12,7 @@ If Pi is already running, restart it or run `/reload`.
 
 ## Philosophy
 
-Pi has a session tree that you can already navigate with `/tree`, providing precise control over context. This extension just adds a few commands for common workflows. No new subsystems, parallel processes, or any magic under the hood.
+Pi has a session tree you can already navigate with `/tree`, so you can control your context. This extension just adds a few commands for common workflows. No new subsystems, parallel processes, or any magic under the hood.
 
 ## Commands
 
@@ -20,29 +20,29 @@ Pi has a session tree that you can already navigate with `/tree`, providing prec
 
 Jump back to the previous user message so you can re-prompt from there. If you're already at a user message, `/undo` goes to the one before it.
 
-`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode. See the [example](#fixing-a-wrong-turn).
+`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode. [Example](#fixing-a-wrong-turn).
 
 ### `/start-branch`
 
 Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
 
-A checkpoint entry gets saved at your current position in the session tree. You get a notification and can continue working. When you're done, `/return` brings you back to the checkpoint with a summary — basically compressing all the context spent on the branch into a single message. See the [example](#spike-investigation).
+This saves a checkpoint at your current position in the session tree. You get a notification and can keep working. When you're done, `/return` jumps you back to the checkpoint with a summary, compressing the branch into a single message. See the [example](#spike-investigation).
 
 ### `/start-fresh`
 
 Like `/start-branch`, but jumps to a fresh context first - the point in the session just before the first user message. The LLM sees a clean context. Your existing conversation is still there, just invisible to this branch.
 
-Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. See it in action: [manual](#fresh-context-review) or [skill-driven](#skill-driven-review).
+Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. See the [example](#fresh-context-review).
 
 ### `/return`
 
-Walk back to the closest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
+Jump back to the nearest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
 
-Run this when you're done with a sub-branch and want the findings folded back into the main line of work. Shown in every [branching example](#spike-investigation).
+Run this when your branch work is done and you want the findings folded into the main conversation. Shown in every [branching example](#spike-investigation).
 
 ### `/cancel`
 
-Same as `/return` but without the summary. The branch gets abandoned quietly. Use this when the investigation was a dead end or you changed your mind. See the [example](#abandoning-a-dead-end).
+Same as `/return` but without the summary. The branch is just dropped. Use this when the investigation was a dead end or you changed your mind. See the [example](#abandoning-a-dead-end).
 
 ## The `task` tool
 
@@ -52,9 +52,9 @@ The commands above work on their own. You can branch, return, and undo without t
 
 The LLM calls `task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
 
-When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest unconsumed `task` entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from being picked up again.
+When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest unconsumed `task` entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
 
-Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) gets picked up first. The first one waits underneath until that one is consumed.
+Multiple tasks can stack. If the LLM calls `task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
 
 ### `/discard-task`
 
@@ -108,7 +108,7 @@ LLM:     [reads summary] Based on the zod recursive schema
          depth guard. Want me to implement it?
 ```
 
-The spike work gets compacted into a summary and folded back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth. You get the answer without polluting the main context.
+The spike compacts into a summary and folds back into the main conversation. The LLM on the main branch sees the findings without the back-and-forth — you get the answer without polluting the main context.
 
 ### Abandoning a dead end
 
@@ -193,7 +193,7 @@ LLM:     [reads summary] Good catches. Let me fix the error
          handling section first, then we can discuss scope.
 ```
 
-Because the review ran in a fresh context, the LLM wasn't anchored to the decisions made during spec writing. It read the document cold — exactly what you want from a review.
+Because the review ran in a fresh context, the LLM wasn't anchored to the decisions made during spec writing. It read the document cold.
 
 ## License
 
