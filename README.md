@@ -34,27 +34,6 @@ Like `/start-branch`, but jumps to a fresh context first - the point in the sess
 
 Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary.
 
-**Before `/start-fresh`:**
-
-```
-root
-└─ user: "Let's design feature X"
-   assistant: [design discussion...]
-   assistant: "Design done, ready for a review."
-   user: "/start-fresh"
-```
-
-**After `/start-fresh`:**
-
-```
-root
-├─ [main branch still there, but LLM doesn't see it]
-└─ checkpoint: { returnTo: main-branch-leaf }    ← sits before first user message
-   user: "Review the spec at docs/specs/feature-design.md for completeness and consistency."
-   assistant: [review findings]
-   user: "/return"
-```
-
 ### `/return`
 
 Walk back to the closest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
@@ -151,6 +130,33 @@ You:     Yeah, not worth it. /cancel
 Pi:     Cancelled. Branch abandoned without summary.
 
 LLM:     [continues on main branch where you left off]
+```
+
+### Fresh-context review
+
+`/start-fresh` jumps to a clean context so the LLM reads your work with fresh eyes. No prior conversation to anchor to — ideal for reviewing specs, designs, or code before committing to implementation.
+
+```
+You:     /start-fresh
+Pi:      Ready to work on this branch. Use /return or /cancel
+         when done.
+
+You:     Review docs/specs/feature-design.md for completeness,
+         consistency, and scope. Flag anything that needs
+         clarification.
+
+LLM:     [reads spec with no prior conversation bias]
+LLM:     Found 3 issues: the error handling section is
+         underspecified, the API surface has grown beyond
+         the original scope, and the migration path for
+         existing users is missing.
+
+You:     /return
+Pi:     [navigates back, appends summary]
+Pi:     Returned. Branch summary attached.
+
+LLM:     [reads summary] Good catches. Let me fix the error
+         handling section first, then we can discuss scope.
 ```
 
 ### Skill-driven spike
