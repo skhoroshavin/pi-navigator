@@ -7,7 +7,7 @@ import { SessionManager, type CustomEntry, type ExtensionAPI, type ExtensionComm
 import registerNavigationCommands, {
   createStartBranchCommand,
   createReturnCommand,
-  createTaskTool,
+  createPushTaskTool,
   createStartFreshCommand,
   createCancelCommand,
   createDiscardTaskCommand,
@@ -22,12 +22,13 @@ import {
   type TaskData,
 } from './index.js';
 
-describe('createTaskTool', () => {
-  it('stores a task entry and returns instruction text', async () => {
+describe('createPushTaskTool', () => {
+  it('registers as push-task, stores a task entry, and returns instruction text', async () => {
     const { pi, ctx, sm } = makeHarness();
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
 
-    const tool = createTaskTool(pi);
+    const tool = createPushTaskTool(pi);
+    assert.strictEqual(tool.name, 'push-task');
     await tool.execute('call-1', { prompt: 'Review the spec.' }, undefined, undefined, ctx);
 
     const task = assertActiveTask(ctx.sessionManager);
@@ -440,7 +441,7 @@ function assertNoActiveTask(sm: SessionManager): void {
 }
 
 describe('registration', () => {
-  it('registers the task tool and all six navigation commands', () => {
+  it('registers the push-task tool and all six navigation commands', () => {
     const registered: Array<{ type: string; name: string; description?: string }> = [];
     const pi = {
       registerTool: (tool: { name: string; label: string; description: string }) =>
@@ -453,7 +454,7 @@ describe('registration', () => {
     registerNavigationCommands(pi);
 
     assert.deepStrictEqual(registered, [
-      { type: 'tool', name: 'task', description: 'Store a task prompt for a user-started navigation branch.' },
+      { type: 'tool', name: 'push-task', description: 'Store a task prompt for a user-started navigation branch.' },
       { type: 'command', name: 'start-branch', description: 'Start the active task from the current branch' },
       { type: 'command', name: 'start-fresh', description: 'Start the active task in a fresh context' },
       { type: 'command', name: 'return', description: 'Return to the checkpoint for the current task branch' },

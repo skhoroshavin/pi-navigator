@@ -10,7 +10,7 @@ import {
 import { Type } from 'typebox';
 
 export default function registerNavigationCommands(pi: ExtensionAPI): void {
-  pi.registerTool(createTaskTool(pi));
+  pi.registerTool(createPushTaskTool(pi));
   pi.registerCommand('start-branch', createStartBranchCommand(pi));
   pi.registerCommand('start-fresh', createStartFreshCommand(pi));
   pi.registerCommand('return', createReturnCommand(pi));
@@ -19,19 +19,19 @@ export default function registerNavigationCommands(pi: ExtensionAPI): void {
   pi.registerCommand('undo', createUndoCommand());
 }
 
-export function createTaskTool(pi: ExtensionAPI): ToolDefinition {
+export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
   return defineTool({
-    name: 'task',
-    label: 'Task',
+    name: 'push-task',
+    label: 'Push Task',
     description: 'Store a task prompt for a user-started navigation branch.',
     promptSnippet: 'Store a focused task prompt for a user-started navigation branch.',
     promptGuidelines: [
-      'Use task when a skill needs the user to start a focused branch workflow with /start-branch.',
+      'Use push-task when a skill needs the user to start a focused branch workflow with /start-branch.',
     ],
-    parameters: taskParameters,
+    parameters: pushTaskParameters,
     async execute(_toolCallId, params, signal) {
       if (signal?.aborted) {
-        throw new Error('Task storage aborted.');
+        throw new Error('Push-task storage aborted.');
       }
 
       pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt });
@@ -332,6 +332,6 @@ export interface ReadonlySessionLike {
 
 type CommandOptions = Omit<RegisteredCommand, 'name' | 'sourceInfo'>;
 
-const taskParameters = Type.Object({
+const pushTaskParameters = Type.Object({
   prompt: Type.String({ description: 'Full prompt for the task, including all context and instructions.' }),
 });
