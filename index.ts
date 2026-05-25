@@ -1,107 +1,76 @@
 import {
-  defineTool,
   type ExtensionAPI,
   type ExtensionCommandContext,
   type RegisteredCommand,
   type SessionEntry,
-  type ToolDefinition,
+  type SessionMessageEntry,
 } from '@earendil-works/pi-coding-agent';
 
-import { Type } from 'typebox';
-
 export default function registerNavigationCommands(pi: ExtensionAPI): void {
-  pi.registerTool(createPushTaskTool(pi));
   pi.registerCommand('start-branch', createStartBranchCommand(pi));
   pi.registerCommand('start-fresh', createStartFreshCommand(pi));
   pi.registerCommand('return', createReturnCommand(pi));
-  pi.registerCommand('cancel', createCancelCommand(pi));
-  pi.registerCommand('discard-task', createDiscardTaskCommand(pi));
+  pi.registerCommand('cancel', createCancelCommand());
   pi.registerCommand('undo', createUndoCommand());
 }
 
-export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
-  return defineTool({
-    name: 'push-task',
-    label: 'Push Task',
-    description: 'Store a task prompt for a user-started navigation branch.',
-    promptSnippet: 'Store a focused task prompt for a user-started navigation branch.',
-    promptGuidelines: [
-      'Use push-task when a skill needs the user to start a focused branch workflow with /start-branch.',
-    ],
-    parameters: pushTaskParameters,
-    async execute(_toolCallId, params, signal) {
-      if (signal?.aborted) {
-        throw new Error('Task storage aborted.');
-      }
 
-      pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt });
-
-      return {
-        content: [{ type: 'text', text: 'Task stored. Run `/start-branch` to begin from here.' }],
-        details: {},
-      };
-    },
-  });
-}
 
 export function createStartBranchCommand(pi: ExtensionAPI): CommandOptions {
   return {
-    description: 'Start the active task from the current branch',
+    description: 'Start a focused branch from the current position',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
 
-      const activeTask = findActiveTask(ctx.sessionManager);
-
       // Store the current leaf as the return point
-      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId() });
+      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'summary' });
 
-      if (activeTask) {
-        pi.sendUserMessage(activeTask.data.prompt);
-      } else {
-        ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
-      }
+      ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
     },
   };
 }
 
 export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
   return {
-    description: 'Start the active task in a fresh context',
+    description: 'Start a focused branch in a fresh context',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
-
-      const activeTask = findActiveTask(ctx.sessionManager);
 
       // Record departure leaf before navigation
       const departureLeafId = ctx.sessionManager.getLeafId()!;
 
-      // Find the first model-visible entry on the current branch.
-      // If none exist, the branch has no LLM context — use the branch root as fallback.
-      const firstVisible = findPreConversationEntry(ctx.sessionManager);
-      let freshTargetId: string;
-      if (firstVisible) {
-        freshTargetId = firstVisible.parentId ?? firstVisible.id;
-      } else {
-        const branch = ctx.sessionManager.getBranch();
-        if (branch.length === 0) {
-          ctx.ui.notify('No starting point found on current branch.', 'warning');
-          return;
-        }
-        freshTargetId = branch[0].parentId ?? branch[0].id;
+      const freshTargetId = findFreshTargetId(ctx.sessionManager);
+      if (!freshTargetId) {
+        ctx.ui.notify('No starting point found on current branch.', 'warning');
+        return;
       }
 
       const result = await ctx.navigateTree(freshTargetId, { summarize: false });
       if (result.cancelled) return;
 
-      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId });
+      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'summary' });
 
-      if (activeTask) {
-        pi.sendUserMessage(activeTask.data.prompt);
-      } else {
-        ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
-      }
+      ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
     },
   };
+}
+
+/**
+ * Find the target ID for navigating to a fresh context.
+ * Returns the parent of the first model-visible entry, or the branch root as fallback.
+ * Returns null if no valid target is found.
+ */
+function findFreshTargetId(session: ReadonlySessionLike): string | null {
+  const branch = session.getBranch();
+  if (branch.length === 0) return null;
+
+  const firstVisible = findPreConversationEntry(session);
+  if (firstVisible) {
+    return firstVisible.parentId ?? firstVisible.id;
+  }
+
+  // Fallback: use branch root's parent (or the root itself if no parent)
+  return branch[0].parentId ?? branch[0].id;
 }
 
 /**
@@ -136,7 +105,9 @@ function findPreConversationEntry(
   return null;
 }
 
-export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
+
+
+export function createCancelCommand(): CommandOptions {
   return {
     description: 'Return without summarizing the current task branch',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -152,33 +123,12 @@ export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
       const result = await ctx.navigateTree(checkpoint.data.returnTo, { summarize: false });
       if (result.cancelled) return;
 
-      if (findActiveTask(ctx.sessionManager)) {
-        pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
-      }
-
       ctx.ui.notify('Cancelled. Branch abandoned without summary.', 'info');
     },
   };
 }
 
-export function createDiscardTaskCommand(pi: ExtensionAPI): CommandOptions {
-  return {
-    description: 'Discard the active task without executing it',
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      await ctx.waitForIdle();
 
-      const activeTask = findActiveTask(ctx.sessionManager);
-      if (!activeTask) {
-        ctx.ui.notify('No pending task.', 'warning');
-        return;
-      }
-
-      pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
-
-      ctx.ui.notify('Task discarded.', 'info');
-    },
-  };
-}
 
 export function createUndoCommand(): CommandOptions {
   return {
@@ -239,61 +189,81 @@ export function createUndoCommand(): CommandOptions {
 export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
   return {
     description: 'Return to the checkpoint for the current task branch',
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
 
       const checkpoint = findCheckpoint(ctx.sessionManager);
-
       if (!checkpoint) {
         ctx.ui.notify('No return point.', 'warning');
         return;
       }
 
-      const result = await ctx.navigateTree(checkpoint.data.returnTo, { summarize: true });
-      if (result.cancelled) {
-        return;
+      // Parse override from args
+      let handoff = checkpoint.data.handoff ?? 'summary';
+      const trimmed = args.trim();
+      if (trimmed === 'last' || trimmed === 'last-response') {
+        handoff = 'last-response';
+      } else if (trimmed === 'summary') {
+        handoff = 'summary';
       }
 
-      if (findActiveTask(ctx.sessionManager)) {
-        pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
+      // Capture last assistant message content before navigation (for last-response mode)
+      let lastAssistantContent: unknown;
+      let lastAssistantId: string | undefined;
+      if (handoff === 'last-response') {
+        const branch = ctx.sessionManager.getBranch();
+        for (let i = branch.length - 1; i >= 0; i--) {
+          const entry = branch[i];
+          if (isAssistantMessageEntry(entry)) {
+            const rawContent = entry.message.content;
+            // Filter to only text blocks — thinking and toolCall blocks are not
+            // valid for custom_message content and cause provider errors (e.g.,
+            // DeepSeek rejects unrecognized content block variants).
+            if (Array.isArray(rawContent)) {
+              lastAssistantContent = rawContent.filter(
+                (block): block is { type: 'text'; text: string } =>
+                  typeof block === 'object' && block !== null && 'type' in block && block.type === 'text',
+              );
+            } else {
+              lastAssistantContent = rawContent;
+            }
+            lastAssistantId = entry.id;
+            break;
+          }
+        }
       }
 
-      ctx.ui.notify('Returned. Branch summary attached.', 'info');
+      const result = await ctx.navigateTree(checkpoint.data.returnTo, {
+        summarize: handoff === 'summary',
+      });
+      if (result.cancelled) return;
+
+      // Inject last assistant message after navigation
+      if (handoff === 'last-response' && lastAssistantId) {
+        pi.sendMessage({
+          customType: 'branch-result',
+          // Content is filtered to only TextContent blocks (or original string)
+          content: lastAssistantContent as unknown as string,
+          display: true,
+          details: { sourceEntryId: lastAssistantId },
+        }, { triggerTurn: true });
+      }
+
+      const injected = handoff === 'last-response' && !!lastAssistantId;
+      const label = injected ? 'Last response attached.' : handoff === 'last-response' ? 'No last response to attach.' : 'Branch summary attached.';
+      ctx.ui.notify(`Returned. ${label}`, 'info');
     },
   };
 }
 
+/** Type guard: is the entry an assistant message with content? */
+function isAssistantMessageEntry(entry: SessionEntry): entry is SessionMessageEntry & { message: { role: 'assistant' } } {
+  return entry.type === 'message' && entry.message.role === 'assistant';
+}
+
 // ── Lookup utilities ──────────────────────────────────────────────
 
-function findActiveTask(
-  session: ReadonlySessionLike,
-): (SessionEntry & { data: TaskData }) | null {
-  const entries = session.getEntries();
-  const byId = new Map<string, SessionEntry>(entries.map((e) => [e.id, e]));
-  let skip = 0;
-  const leafId = session.getLeafId();
-  let current = leafId ? byId.get(leafId) : undefined;
 
-  while (current) {
-    if (current.type === 'custom' && current.customType === TASK_DONE_ENTRY_TYPE) {
-      skip++;
-    } else if (current.type === 'custom' && current.customType === TASK_ENTRY_TYPE) {
-      if (skip === 0) return current as SessionEntry & { data: TaskData };
-      skip--;
-    }
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-
-  return null;
-}
-
-export const TASK_ENTRY_TYPE = 'task';
-
-export const TASK_DONE_ENTRY_TYPE = 'task-done';
-
-export interface TaskData {
-  prompt: string;
-}
 
 function findCheckpoint(
   session: ReadonlySessionLike,
@@ -317,6 +287,7 @@ export const CHECKPOINT_ENTRY_TYPE = 'checkpoint';
 
 export interface CheckpointData {
   returnTo: string;
+  handoff?: 'summary' | 'last-response';
 }
 
 /**
@@ -332,6 +303,3 @@ export interface ReadonlySessionLike {
 
 type CommandOptions = Omit<RegisteredCommand, 'name' | 'sourceInfo'>;
 
-const pushTaskParameters = Type.Object({
-  prompt: Type.String({ description: 'Full prompt for the task, including all context and instructions.' }),
-});

@@ -2,39 +2,22 @@ import assert from 'node:assert';
 
 import { describe, it } from 'node:test';
 
-import { SessionManager, type CustomEntry, type ExtensionAPI, type ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
+import { SessionManager, type ExtensionAPI, type ExtensionCommandContext } from '@earendil-works/pi-coding-agent';
 
 import registerNavigationCommands, {
   createStartBranchCommand,
   createReturnCommand,
-  createPushTaskTool,
   createStartFreshCommand,
   createCancelCommand,
-  createDiscardTaskCommand,
   createUndoCommand,
 } from './index.js';
 
 import {
   CHECKPOINT_ENTRY_TYPE,
-  TASK_DONE_ENTRY_TYPE,
-  TASK_ENTRY_TYPE,
   type CheckpointData,
-  type TaskData,
 } from './index.js';
 
-describe('createPushTaskTool', () => {
-  it('pushes a task entry, and returns instruction text', async () => {
-    const { pi, ctx, sm } = makeHarness();
-    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
 
-    const tool = createPushTaskTool(pi);
-    assert.strictEqual(tool.name, 'push-task');
-    await tool.execute('call-1', { prompt: 'Review the spec.' }, undefined, undefined, ctx);
-
-    const task = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(task.prompt, 'Review the spec.');
-  });
-});
 
 describe('createStartBranchCommand', () => {
   it('creates a checkpoint without injecting a prompt when there is no pending task', async () => {
@@ -52,28 +35,11 @@ describe('createStartBranchCommand', () => {
     const n = assertLastNotification(notifications, 'info');
     assert.ok(n.message.includes('Ready to work'));
 
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     assert.strictEqual(checkpoint.returnTo, leafBefore);
   });
 
-  it('bookmarks the current leaf with a checkpoint and injects the active task prompt', async () => {
-    const { pi, ctx, sm, sentMessages } = makeHarness();
-    sm.appendMessage({ role: 'user', content: 'lets work', timestamp: 0 });
-    sm.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
-    const taskLeafId = ctx.sessionManager.getLeafId();
 
-    const cmd = createStartBranchCommand(pi);
-    await cmd.handler('', ctx);
-
-    assert.deepStrictEqual(sentMessages, ['Implement phase 1.']);
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
-    // returnTo is the leaf the checkpoint was created at (the task entry)
-    assert.strictEqual(checkpoint.returnTo, taskLeafId);
-
-    // The task is still findable from the new leaf
-    const task = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(task.prompt, 'Implement phase 1.');
-  });
 });
 
 describe('createStartFreshCommand', () => {
@@ -97,128 +63,34 @@ describe('createStartFreshCommand', () => {
     assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
 
     // Checkpoint was still created
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     assert.strictEqual(checkpoint.returnTo, leafBefore);
   });
 
-  it('navigates to pre-conversation point, creates checkpoint on fresh branch, and injects task prompt', async () => {
-    const { pi, ctx, sentMessages, navigations } = makeHarness();
 
-    // Build a session with history before the task
-    const rootUserMsgId = ctx.sessionManager.appendMessage({ role: 'user', content: 'Let us design feature X.', timestamp: 0 });
-    ctx.sessionManager.appendMessage(assistantMessage('Sure, let us start.'));
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'How about option A?', timestamp: 0 });
-    // LLM stores a task
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Review spec at docs/specs/design.md for completeness.' });
-    const departureLeafId = ctx.sessionManager.getLeafId()!;
 
-    const cmd = createStartFreshCommand(pi);
-    await cmd.handler('', ctx);
 
-    // Should navigate to pre-conversation point (parent of first user message)
-    assert.strictEqual(navigations.length, 1);
-    // The first user message's parent is null (it's the root), so navigateTree targets the first user message id
-    assert.strictEqual(navigations[0].targetId, rootUserMsgId);
-    assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
 
-    // Checkpoint should have been created with returnTo = departureLeafId
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
-    assert.strictEqual(checkpoint.returnTo, departureLeafId);
 
-    // Task prompt should have been injected
-    assert.deepStrictEqual(sentMessages, ['Review spec at docs/specs/design.md for completeness.']);
-  });
-
-  it('does not navigate when navigateTree is cancelled', async () => {
-    const { pi, ctx, setCancelNextNav } = makeHarness();
-    setCancelNextNav(true);
-
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Do the thing.' });
-
-    const entriesBefore = ctx.sessionManager.getEntries().length;
-
-    const cmd = createStartFreshCommand(pi);
-    await cmd.handler('', ctx);
-
-    // Nothing was appended after cancellation
-    assert.strictEqual(ctx.sessionManager.getEntries().length, entriesBefore);
-  });
-
-  it('handles session where first user message parentId is null by targeting the user message itself', async () => {
-    // This test verifies the branching: when parentId is null, navigateTree calls resetLeaf()
-    // and subsequent appendEntry creates root-level siblings.
-    const { pi, ctx, navigations } = makeHarness();
-
-    const firstUserMsgId = ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Task on fresh branch.' });
-
-    const cmd = createStartFreshCommand(pi);
-    await cmd.handler('', ctx);
-
-    assert.strictEqual(navigations[0].targetId, firstUserMsgId);
-    // Pi handles parentId === null by calling resetLeaf(); checkpoint will be a sibling
-  });
 });
+
+
 
 describe('createCancelCommand', () => {
   it('notifies without navigating when no checkpoint exists', async () => {
-    const { pi, ctx, notifications } = makeHarness();
+    const { ctx, notifications } = makeHarness();
     ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
 
-    const cmd = createCancelCommand(pi);
+    const cmd = createCancelCommand();
     await cmd.handler('', ctx);
 
     assertLastNotification(notifications, 'warning', 'No return point.');
     assertNoCheckpoint(ctx.sessionManager);
   });
 
-  it('navigates back without summary and appends task-done', async () => {
-    const { pi, ctx, navigations } = makeHarness();
 
-    // Set up the same scenario as the return test
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
-    ctx.sessionManager.appendMessage(assistantMessage('Ready.'));
 
-    const leafId = ctx.sessionManager.getLeafId()!;
-    ctx.sessionManager.branch(leafId);
-    ctx.sessionManager.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId });
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'task work', timestamp: 0 });
-    ctx.sessionManager.appendMessage(assistantMessage('Working...'));
 
-    const cmd = createCancelCommand(pi);
-    await cmd.handler('', ctx);
-
-    assert.strictEqual(navigations.length, 1);
-    assert.strictEqual(navigations[0].targetId, leafId);
-    // Key difference from /return: summarize is false
-    assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
-
-    // Task-done should still be appended
-    const entries = ctx.sessionManager.getEntries();
-    const lastEntry = entries[entries.length - 1];
-    assert.strictEqual(lastEntry.type, 'custom');
-    assert.strictEqual((lastEntry as CustomEntry).customType, TASK_DONE_ENTRY_TYPE);
-  });
-
-  it('does not append task-done when navigation is cancelled', async () => {
-    const { pi, ctx, setCancelNextNav } = makeHarness();
-    setCancelNextNav(true);
-
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
-    const leafId = ctx.sessionManager.getLeafId()!;
-    ctx.sessionManager.branch(leafId);
-    ctx.sessionManager.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId });
-
-    const entriesBefore = ctx.sessionManager.getEntries().length;
-
-    const cmd = createCancelCommand(pi);
-    await cmd.handler('', ctx);
-
-    assert.strictEqual(ctx.sessionManager.getEntries().length, entriesBefore);
-  });
 });
 
 function assertNoCheckpoint(sm: SessionManager): void {
@@ -226,47 +98,7 @@ function assertNoCheckpoint(sm: SessionManager): void {
   assert.strictEqual(cp, null, `Expected no checkpoint, but found one: ${JSON.stringify(cp)}`);
 }
 
-describe('createDiscardTaskCommand', () => {
-  it('notifies when there is no pending task', async () => {
-    const { pi, ctx, notifications } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
 
-    const cmd = createDiscardTaskCommand(pi);
-    await cmd.handler('', ctx);
-
-    assertLastNotification(notifications, 'warning', 'No pending task.');
-  });
-
-  it('appends task-done to consume the active task', async () => {
-    const { pi, ctx } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'first task' });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'second task' });
-
-    const cmd = createDiscardTaskCommand(pi);
-    await cmd.handler('', ctx);
-
-    const entries = ctx.sessionManager.getEntries();
-    const lastEntry = entries[entries.length - 1];
-    assert.strictEqual(lastEntry.type, 'custom');
-    assert.strictEqual((lastEntry as CustomEntry).customType, TASK_DONE_ENTRY_TYPE);
-
-    // Active task is now 'first task' (second was consumed)
-    const task = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(task.prompt, 'first task');
-  });
-
-  it('clears the only pending task so no task remains', async () => {
-    const { pi, ctx } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'only task' });
-
-    const cmd = createDiscardTaskCommand(pi);
-    await cmd.handler('', ctx);
-
-    assertNoActiveTask(ctx.sessionManager);
-  });
-});
 
 describe('createUndoCommand', () => {
   it('notifies when at the first user message (no earlier user message)', async () => {
@@ -343,7 +175,6 @@ describe('createReturnCommand', () => {
   it('notifies without navigating when there is no checkpoint on the current branch', async () => {
     const { pi, ctx, sm, notifications } = makeHarness();
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    sm.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
 
     const cmd = createReturnCommand(pi);
     await cmd.handler('', ctx);
@@ -351,22 +182,16 @@ describe('createReturnCommand', () => {
     assertLastNotification(notifications, 'warning', 'No return point.');
   });
 
-  it('navigates to the checkpoint return target and appends task-done', async () => {
+  it('navigates to the checkpoint return target', async () => {
     const { pi, ctx, sm, navigations } = makeHarness();
 
-    // Set up: user msg → task → assistant msg
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    sm.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
     sm.appendMessage(assistantMessage('Ready.'));
 
-    // Simulate /start-branch: branch from leaf, checkpoint returns to leaf (assistant)
     const leafId = sm.getLeafId()!;
     sm.branch(leafId);
-    // Checkpoint at leaf; returnTo is the leaf (assistant), after navigating there the task is reachable via parent chain
     sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId });
-    sm.appendMessage({ role: 'user', content: 'Implement phase 1.', timestamp: 0 });
-
-    // Simulate work on branch
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
     sm.appendMessage(assistantMessage('Done.'));
 
     const cmd = createReturnCommand(pi);
@@ -375,73 +200,140 @@ describe('createReturnCommand', () => {
     assert.strictEqual(navigations.length, 1);
     assert.strictEqual(navigations[0].targetId, leafId);
     assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, true);
-
-    // Task-done was appended
-    const entries = ctx.sessionManager.getEntries();
-    const lastEntry = entries[entries.length - 1];
-    assert.strictEqual(lastEntry.type, 'custom');
-    assert.strictEqual((lastEntry as CustomEntry).customType, TASK_DONE_ENTRY_TYPE);
-
-    // After return, the task should be consumed
-    assertNoActiveTask(ctx.sessionManager);
   });
 
-  it('does not append task-done when tree navigation is cancelled', async () => {
-    const { pi, ctx, sm, setCancelNextNav } = makeHarness();
-    setCancelNextNav(true);
 
+
+
+
+  it('injects last assistant message when checkpoint has handoff "last-response"', async () => {
+    const { pi, ctx, sm, sentCustomMessages, notifications } = makeHarness();
+
+    // Set up: user msg → assistant msg → checkpoint with last-response
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    const rootId = sm.getLeafId()!;
-    sm.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Implement phase 1.' });
-    const taskId = sm.getLeafId()!;
-    sm.branch(taskId);
-    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: rootId });
+    sm.appendMessage(assistantMessage('Here is my analysis...'));
 
-    const entriesBefore = ctx.sessionManager.getEntries().length;
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Working on it...'));
 
     const cmd = createReturnCommand(pi);
     await cmd.handler('', ctx);
 
-    assert.strictEqual(ctx.sessionManager.getEntries().length, entriesBefore);
+    // Should have injected the last assistant message
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+    assert.strictEqual((sentCustomMessages[0].options as { triggerTurn?: boolean } | undefined)?.triggerTurn, true);
+
+    assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
   });
 
-  it('supports a complete start-branch → work → return roundtrip', async () => {
-    const { pi, ctx, sm, sentMessages, navigations } = makeHarness();
+  it('overrides checkpoint handoff with "/return last"', async () => {
+    const { pi, ctx, sm, sentCustomMessages } = makeHarness();
 
-    // User starts a conversation
+    // Checkpoint with summary handoff
     sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Summary of work...'));
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'summary' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Final answer.'));
 
-    // LLM stores a task
-    pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'Write tests first.' });
-    const taskLeafId = sm.getLeafId()!;
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('last', ctx);
 
-    // User runs /start-branch
-    const startCmd = createStartBranchCommand(pi);
-    await startCmd.handler('', ctx);
-    assert.deepStrictEqual(sentMessages, ['Write tests first.']);
+    // Should inject last response despite summary checkpoint
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+  });
 
-    // Simulate assistant work on the branch
-    sm.appendMessage(assistantMessage('Tests and implementation are complete.'));
+  it('overrides checkpoint handoff with "/return summary"', async () => {
+    const { pi, ctx, sm, sentCustomMessages, navigations } = makeHarness();
 
-    // User runs /return
-    const returnCmd = createReturnCommand(pi);
-    await returnCmd.handler('', ctx);
+    // Checkpoint with last-response handoff
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Final answer.'));
 
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('summary', ctx);
+
+    // Should use summarize: true despite last-response checkpoint
     assert.strictEqual(navigations.length, 1);
-    assert.strictEqual(navigations[0].targetId, taskLeafId);
+    assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, true);
 
-    // Task-done was appended, consuming the task
-    assertNoActiveTask(ctx.sessionManager);
+    // No injection should occur
+    assert.strictEqual(sentCustomMessages.length, 0);
+  });
+
+  it('filters out thinking blocks from injected last-response content', async () => {
+    const { pi, ctx, sm, sentCustomMessages } = makeHarness();
+
+    // Assistant message with thinking + text blocks (as happens with thinking mode on)
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    sm.appendMessage({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'Internal reasoning...' },
+        { type: 'text', text: 'Public response.' },
+      ],
+      timestamp: 0,
+      model: 'test',
+      provider: 'test',
+    } as Parameters<SessionManager['appendMessage']>[0]);
+
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'task work', timestamp: 0 });
+    sm.appendMessage({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'Processing...' },
+        { type: 'text', text: 'Task result here.' },
+      ],
+      timestamp: 0,
+      model: 'test',
+      provider: 'test',
+    } as Parameters<SessionManager['appendMessage']>[0]);
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('', ctx);
+
+    // Should inject only text blocks, not thinking blocks
+    assert.strictEqual(sentCustomMessages.length, 1);
+    const content = sentCustomMessages[0].content as Array<{ type: string; text: string }>;
+    assert.strictEqual(content.length, 1);
+    assert.strictEqual(content[0].type, 'text');
+    assert.strictEqual(content[0].text, 'Task result here.');
+  });
+
+  it('navigates without injecting when no assistant message exists on branch', async () => {
+    const { pi, ctx, sm, sentCustomMessages, notifications } = makeHarness();
+
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    // No assistant message on branch
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('', ctx);
+
+    // No injection — no assistant message to inject
+    assert.strictEqual(sentCustomMessages.length, 0);
+    assertLastNotification(notifications, 'info', 'Returned. No last response to attach.');
   });
 });
 
-function assertNoActiveTask(sm: SessionManager): void {
-  const task = getActiveTask(sm);
-  assert.strictEqual(task, null, `Expected no active task, but found: ${JSON.stringify(task)}`);
-}
-
 describe('registration', () => {
-  it('registers the push-task tool and all six navigation commands', () => {
+  it('registers all navigation commands', () => {
     const registered: Array<{ type: string; name: string; description?: string }> = [];
     const pi = {
       registerTool: (tool: { name: string; label: string; description: string }) =>
@@ -454,12 +346,10 @@ describe('registration', () => {
     registerNavigationCommands(pi);
 
     assert.deepStrictEqual(registered, [
-      { type: 'tool', name: 'push-task', description: 'Store a task prompt for a user-started navigation branch.' },
-      { type: 'command', name: 'start-branch', description: 'Start the active task from the current branch' },
-      { type: 'command', name: 'start-fresh', description: 'Start the active task in a fresh context' },
+      { type: 'command', name: 'start-branch', description: 'Start a focused branch from the current position' },
+      { type: 'command', name: 'start-fresh', description: 'Start a focused branch in a fresh context' },
       { type: 'command', name: 'return', description: 'Return to the checkpoint for the current task branch' },
       { type: 'command', name: 'cancel', description: 'Return without summarizing the current task branch' },
-      { type: 'command', name: 'discard-task', description: 'Discard the active task without executing it' },
       { type: 'command', name: 'undo', description: 'Jump to the previous user message to re-prompt' },
     ]);
   });
@@ -467,20 +357,20 @@ describe('registration', () => {
 
 describe('integration: nested /start-fresh', () => {
   it('completes /start-fresh → /return roundtrip with checkpoint', async () => {
-    const { pi, ctx, sentMessages, notifications } = makeHarness();
+    const { pi, ctx, navigations, notifications } = makeHarness();
 
     ctx.sessionManager.appendMessage({ role: 'user', content: 'main work', timestamp: 0 });
     ctx.sessionManager.appendMessage(assistantMessage('working...'));
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'fresh context task' });
 
     // /start-fresh: navigates to pre-conversation point
     const startFreshCmd = createStartFreshCommand(pi);
     await startFreshCmd.handler('', ctx);
 
-    assert.strictEqual(sentMessages[0], 'fresh context task');
-
     // Simulate work on the fresh branch
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'do work', timestamp: 0 });
     ctx.sessionManager.appendMessage(assistantMessage('task done'));
+
+    navigations.length = 0;
 
     // /return — navigates back to checkpoint
     const returnCmd = createReturnCommand(pi);
@@ -488,39 +378,12 @@ describe('integration: nested /start-fresh', () => {
 
     assertLastNotification(notifications, 'info', 'Returned. Branch summary attached.');
 
-    // Task should be consumed
-    const lastEntry = ctx.sessionManager.getEntries()[ctx.sessionManager.getEntries().length - 1];
-    assert.strictEqual((lastEntry as CustomEntry).customType, TASK_DONE_ENTRY_TYPE);
+    // No task involved — just a plain roundtrip
+    assert.strictEqual(navigations.length, 1);
   });
 });
 
-describe('integration: nested /start-branch', () => {
-  it('supports /start-branch → work → /return roundtrip with stacked tasks', async () => {
-    const { pi, ctx, sentMessages, notifications } = makeHarness();
 
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'main', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'inner task' });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'outer task' });
-
-    // /start-branch: bookmarks, injects outer task (most recent = closest to leaf)
-    const startBranchCmd = createStartBranchCommand(pi);
-    await startBranchCmd.handler('', ctx);
-    assert.strictEqual(sentMessages[0], 'outer task');
-    sentMessages.length = 0;
-
-    // Work
-    ctx.sessionManager.appendMessage(assistantMessage('doing outer'));
-
-    // /return
-    const returnCmd = createReturnCommand(pi);
-    await returnCmd.handler('', ctx);
-    assertLastNotification(notifications, 'info', 'Returned. Branch summary attached.');
-
-    // Outer task consumed, inner task is now active
-    const active = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(active.prompt, 'inner task');
-  });
-});
 
 describe('integration: edge cases from design spec', () => {
   it('/start-branch with no pending task creates checkpoint and does not inject', async () => {
@@ -539,22 +402,13 @@ describe('integration: edge cases from design spec', () => {
     assert.strictEqual(checkpoint.returnTo, leafId);
   });
 
-  it('/return with no checkpoint notifies without navigating', async () => {
-    const { pi, ctx, notifications } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'orphan task' });
 
-    const cmd = createReturnCommand(pi);
-    await cmd.handler('', ctx);
-
-    assertLastNotification(notifications, 'warning', 'No return point.');
-  });
 
   it('/cancel with no checkpoint notifies without navigating', async () => {
-    const { pi, ctx, notifications } = makeHarness();
+    const { ctx, notifications } = makeHarness();
     ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
 
-    const cmd = createCancelCommand(pi);
+    const cmd = createCancelCommand();
     await cmd.handler('', ctx);
 
     assertLastNotification(notifications, 'warning', 'No return point.');
@@ -583,15 +437,7 @@ describe('integration: edge cases from design spec', () => {
     assert.ok(n.message.includes('Ready to work'));
   });
 
-  it('/discard-task with no pending task notifies', async () => {
-    const { pi, ctx, notifications } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
 
-    const cmd = createDiscardTaskCommand(pi);
-    await cmd.handler('', ctx);
-
-    assertLastNotification(notifications, 'warning', 'No pending task.');
-  });
 
   it('/undo on first user message notifies', async () => {
     const { ctx, notifications } = makeHarness();
@@ -605,83 +451,14 @@ describe('integration: edge cases from design spec', () => {
     assertLastNotification(notifications, 'info', 'Already at the start.');
   });
 
-  it('user manually /tree away from branch then /return yields no return point', async () => {
-    const { pi, ctx, notifications } = makeHarness();
 
-    // Build a branch with a checkpoint
-    const mainId = ctx.sessionManager.appendMessage({ role: 'user', content: 'main branch', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'task' });
-    ctx.sessionManager.appendMessage(assistantMessage('ready'));
-    const leafId = ctx.sessionManager.getLeafId()!;
-    ctx.sessionManager.branch(leafId);
-    ctx.sessionManager.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId });
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'working on task', timestamp: 0 });
-    ctx.sessionManager.appendMessage(assistantMessage('working...'));
 
-    // User manually /trees back to main
-    ctx.sessionManager.branch(mainId);
-    // Continue on main branch
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'continuing main', timestamp: 0 });
 
-    // /return from main branch — checkpoint is on abandoned branch, not found
-    const cmd = createReturnCommand(pi);
-    await cmd.handler('', ctx);
-
-    assertLastNotification(notifications, 'warning', 'No return point.');
-  });
-
-  it('task called twice - second task is the active one (closest to leaf)', async () => {
-    const { pi, ctx } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'first task' });
-    pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'second task' });
-
-    const task = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(task.prompt, 'second task');
-  });
-
-  it('after clearing second task, first task becomes active', async () => {
-    const { pi, ctx } = makeHarness();
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
-    pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'first task' });
-    pi.appendEntry(TASK_ENTRY_TYPE, { prompt: 'second task' });
-
-    const discardCmd = createDiscardTaskCommand(pi);
-    await discardCmd.handler('', ctx);
-
-    const task = assertActiveTask(ctx.sessionManager);
-    assert.strictEqual(task.prompt, 'first task');
-  });
-
-  it('/undo from a /start-fresh branch goes to the injected task message', async () => {
-    const { pi, ctx, navigations } = makeHarness();
-
-    ctx.sessionManager.appendMessage({ role: 'user', content: 'main message', timestamp: 0 });
-    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'fresh task' });
-
-    // /start-fresh
-    const startFreshCmd = createStartFreshCommand(pi);
-    await startFreshCmd.handler('', ctx);
-
-    // Now on fresh branch. The only user message is the injected task prompt.
-    // Simulate assistant work
-    ctx.sessionManager.appendMessage(assistantMessage('working on fresh branch'));
-
-    navigations.length = 0;
-    const undoCmd = createUndoCommand();
-    await undoCmd.handler('', ctx);
-
-    // Should navigate to the injected task message (the only user message on this branch)
-    assert.strictEqual(navigations.length, 1);
-    // The target should be a user message
-    const targetEntry = ctx.sessionManager.getEntry(navigations[0].targetId);
-    assert.ok(targetEntry);
-    assert.strictEqual(targetEntry.type, 'message');
-    if (targetEntry.type === 'message') {
-      assert.strictEqual(targetEntry.message.role, 'user');
-    }
-  });
 });
+
+
+
+
 
 /**
  * Thin harness: real SessionManager for entry tree operations,
@@ -693,6 +470,7 @@ describe('integration: edge cases from design spec', () => {
 function makeHarness() {
   const sm = SessionManager.inMemory();
   const sentMessages: string[] = [];
+  const sentCustomMessages: Array<{ customType: string; content: unknown; options?: unknown }> = [];
   const notifications: Array<{ message: string; type?: string }> = [];
   const navigations: Array<{ targetId: string; opts?: unknown }> = [];
   let cancelNextNav = false;
@@ -705,6 +483,10 @@ function makeHarness() {
       const text = typeof content === 'string' ? content : content.map((b) => b.text).join('');
       sm.appendMessage({ role: 'user', content: text, timestamp: Date.now() });
       sentMessages.push(text);
+    },
+    sendMessage(message: { customType: string; content: unknown; display?: boolean; details?: unknown }, options?: { triggerTurn?: boolean }) {
+      sentCustomMessages.push({ customType: message.customType, content: message.content, options });
+      sm.appendCustomMessageEntry(message.customType, message.content as string, message.display ?? true, message.details);
     },
   } as unknown as ExtensionAPI;
 
@@ -731,6 +513,7 @@ function makeHarness() {
     pi,
     ctx,
     sentMessages,
+    sentCustomMessages,
     notifications,
     navigations,
     setCancelNextNav(v: boolean) {
@@ -751,9 +534,12 @@ function assistantMessage(text: string): AppendMessageInput {
 
 type AppendMessageInput = Parameters<SessionManager['appendMessage']>[0];
 
-function assertCheckpoint(sm: SessionManager): CheckpointData {
+function assertCheckpoint(sm: SessionManager, expectedHandoff?: CheckpointData['handoff']): CheckpointData {
   const cp = getCheckpoint(sm);
   assert.ok(cp, 'Expected checkpoint, found none.');
+  if (expectedHandoff) {
+    assert.strictEqual(cp.handoff, expectedHandoff);
+  }
   return cp;
 }
 
@@ -765,27 +551,6 @@ function getCheckpoint(sm: SessionManager): CheckpointData | null {
     const e = branch[i];
     if (e.type === 'custom' && e.customType === CHECKPOINT_ENTRY_TYPE) {
       return e.data as CheckpointData;
-    }
-  }
-  return null;
-}
-
-function assertActiveTask(sm: SessionManager): TaskData {
-  const task = getActiveTask(sm);
-  assert.ok(task, 'Expected active task, found none.');
-  return task;
-}
-
-function getActiveTask(sm: SessionManager): TaskData | null {
-  const branch = sm.getBranch();
-  let skip = 0;
-  for (let i = branch.length - 1; i >= 0; i--) {
-    const e = branch[i];
-    if (e.type === 'custom' && e.customType === TASK_DONE_ENTRY_TYPE) {
-      skip++;
-    } else if (e.type === 'custom' && e.customType === TASK_ENTRY_TYPE) {
-      if (skip === 0) return e.data as TaskData;
-      skip--;
     }
   }
   return null;
