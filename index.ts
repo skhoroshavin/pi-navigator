@@ -316,7 +316,8 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
       if (handoff === 'last-response' && lastAssistantId) {
         pi.sendMessage({
           customType: 'branch-result',
-          content: lastAssistantContent as any,
+          // Cast through unknown: assistant message content blocks are structurally compatible with sendMessage's union type
+          content: lastAssistantContent as unknown as string,
           display: true,
           details: { sourceEntryId: lastAssistantId },
         }, { triggerTurn: true });
