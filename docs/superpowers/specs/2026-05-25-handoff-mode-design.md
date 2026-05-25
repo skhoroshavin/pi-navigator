@@ -83,7 +83,7 @@ pi.sendMessage({
   content: lastAssistantMessage.content,
   display: true,
   details: { sourceEntryId: lastAssistantMessage.id },
-});
+}, { triggerTurn: true });
 ```
 
 This creates a `custom_message` entry visible to the LLM. The `customType: 'branch-result'` allows extensions to render it distinctly if desired.
@@ -102,6 +102,47 @@ When a task specifies `context: "branch"`, `/start-task` behaves like `/start-br
 ### Shared fresh-context logic
 
 Extract the fresh-context navigation logic (finding pre-conversation entry, navigating, creating checkpoint) into a shared helper used by both `/start-fresh` and `/start-task`.
+
+### New command: `/start-task`
+
+```typescript
+export function createStartTaskCommand(pi: ExtensionAPI): CommandOptions {
+  return {
+    description: 'Start the active task as a subagent',
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      await ctx.waitForIdle();
+
+      const activeTask = findActiveTask(ctx.sessionManager);
+      if (!activeTask) {
+        ctx.ui.notify('No pending task. Use push-task first.', 'warning');
+        return;
+      }
+
+      const taskContext = activeTask.data.context ?? 'fresh';
+
+      if (taskContext === 'fresh') {
+        // Reuse same fresh-context logic as /start-fresh
+        const departureLeafId = ctx.sessionManager.getLeafId()!;
+        const freshTargetId = findFreshTargetId(ctx.sessionManager);
+        if (!freshTargetId) {
+          ctx.ui.notify('No starting point found on current branch.', 'warning');
+          return;
+        }
+
+        const result = await ctx.navigateTree(freshTargetId, { summarize: false });
+        if (result.cancelled) return;
+
+        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'last-response' });
+      } else {
+        // Branch context — same as /start-branch
+        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'last-response' });
+      }
+
+      pi.sendUserMessage(activeTask.data.prompt);
+    },
+  };
+}
+```
 
 ### Updated `/return`
 
@@ -152,7 +193,7 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
           content: lastAssistantMessage.message.content,
           display: true,
           details: { sourceEntryId: lastAssistantMessage.id },
-        });
+        }, { triggerTurn: true });
       }
 
       if (findActiveTask(ctx.sessionManager)) {
