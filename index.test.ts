@@ -33,6 +33,19 @@ describe('createPushTaskTool', () => {
 
     const task = assertActiveTask(ctx.sessionManager);
     assert.strictEqual(task.prompt, 'Review the spec.');
+    assert.strictEqual(task.context, 'fresh');
+  });
+
+  it('pushes a task entry with explicit context "branch"', async () => {
+    const { pi, ctx, sm } = makeHarness();
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+
+    const tool = createPushTaskTool(pi);
+    await tool.execute('call-1', { prompt: 'Quick fix.', context: 'branch' }, undefined, undefined, ctx);
+
+    const task = assertActiveTask(ctx.sessionManager);
+    assert.strictEqual(task.prompt, 'Quick fix.');
+    assert.strictEqual(task.context, 'branch');
   });
 });
 

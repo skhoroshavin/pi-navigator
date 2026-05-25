@@ -34,7 +34,7 @@ export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
         throw new Error('Task storage aborted.');
       }
 
-      pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt });
+      pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt, context: params.context ?? 'fresh' });
 
       return {
         content: [{ type: 'text', text: 'Task stored. Run `/start-branch` to begin from here.' }],
@@ -302,6 +302,7 @@ export const TASK_DONE_ENTRY_TYPE = 'task-done';
 
 export interface TaskData {
   prompt: string;
+  context: 'fresh' | 'branch';
 }
 
 function findCheckpoint(
@@ -344,4 +345,8 @@ type CommandOptions = Omit<RegisteredCommand, 'name' | 'sourceInfo'>;
 
 const pushTaskParameters = Type.Object({
   prompt: Type.String({ description: 'Full prompt for the task, including all context and instructions.' }),
+  context: Type.Optional(Type.Union([
+    Type.Literal('fresh'),
+    Type.Literal('branch'),
+  ], { description: 'Context mode: "fresh" (clean slate, default) or "branch" (current branch).' })),
 });
