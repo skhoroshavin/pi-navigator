@@ -74,13 +74,30 @@ Extend `CheckpointData` with `handoff` field. Update all checkpoint creation sit
 
 1. Before navigating, walk the branch from the leaf to find the last assistant message
 2. Navigate to the checkpoint target (`navigateTree` with `{ summarize: false }`)
-3. After navigation, inject the captured message as a `custom_message` entry
+3. After navigation, call `pi.sendMessage` with a custom message containing the captured content:
 
-This requires checking pi's API for `appendCustomMessage` or similar. If unavailable, an alternative is to store the message content in the checkpoint and inject it via `sendUserMessage` with framing (e.g., "Branch result: ..."), but this pollutes the user message history.
+```typescript
+// After navigation
+pi.sendMessage({
+  customType: 'branch-result',
+  content: lastAssistantMessage.content,
+  display: true,
+  details: { sourceEntryId: lastAssistantMessage.id },
+});
+```
+
+This creates a `custom_message` entry visible to the LLM. The `customType: 'branch-result'` allows extensions to render it distinctly if desired.
 
 ### `/return last` shorthand
 
 Accept `last` as shorthand for `last-response`. Shorter to type, unambiguous in context.
+
+### `/start-task` with `context: "branch"`
+
+When a task specifies `context: "branch"`, `/start-task` behaves like `/start-branch`:
+- Stays on the current branch (no navigation)
+- Creates a checkpoint with `handoff: "last-response"`
+- The checkpoint stacks naturally — `findCheckpoint` walks up the parent chain, so nested branches work correctly
 
 ### Shared fresh-context logic
 
@@ -110,10 +127,33 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         handoff = 'summary';
       }
 
+      // Capture last assistant message before navigation (for last-response mode)
+      let lastAssistantMessage: SessionEntry | undefined;
+      if (handoff === 'last-response') {
+        const branch = ctx.sessionManager.getBranch();
+        for (let i = branch.length - 1; i >= 0; i--) {
+          const entry = branch[i];
+          if (entry.type === 'message' && entry.message?.role === 'assistant') {
+            lastAssistantMessage = entry;
+            break;
+          }
+        }
+      }
+
       const result = await ctx.navigateTree(checkpoint.data.returnTo, {
         summarize: handoff === 'summary',
       });
       if (result.cancelled) return;
+
+      // Inject last assistant message after navigation
+      if (handoff === 'last-response' && lastAssistantMessage) {
+        pi.sendMessage({
+          customType: 'branch-result',
+          content: lastAssistantMessage.message.content,
+          display: true,
+          details: { sourceEntryId: lastAssistantMessage.id },
+        });
+      }
 
       if (findActiveTask(ctx.sessionManager)) {
         pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
