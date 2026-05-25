@@ -285,26 +285,58 @@ export function createUndoCommand(): CommandOptions {
 export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
   return {
     description: 'Return to the checkpoint for the current task branch',
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
 
       const checkpoint = findCheckpoint(ctx.sessionManager);
-
       if (!checkpoint) {
         ctx.ui.notify('No return point.', 'warning');
         return;
       }
 
-      const result = await ctx.navigateTree(checkpoint.data.returnTo, { summarize: true });
-      if (result.cancelled) {
-        return;
+      // Parse override from args
+      let handoff = checkpoint.data.handoff ?? 'summary';
+      const trimmed = args.trim();
+      if (trimmed === 'last' || trimmed === 'last-response') {
+        handoff = 'last-response';
+      } else if (trimmed === 'summary') {
+        handoff = 'summary';
+      }
+
+      // Capture last assistant message before navigation (for last-response mode)
+      let lastAssistantMessage: SessionEntry | undefined;
+      if (handoff === 'last-response') {
+        const branch = ctx.sessionManager.getBranch();
+        for (let i = branch.length - 1; i >= 0; i--) {
+          const entry = branch[i];
+          if (entry.type === 'message' && entry.message?.role === 'assistant') {
+            lastAssistantMessage = entry;
+            break;
+          }
+        }
+      }
+
+      const result = await ctx.navigateTree(checkpoint.data.returnTo, {
+        summarize: handoff === 'summary',
+      });
+      if (result.cancelled) return;
+
+      // Inject last assistant message after navigation
+      if (handoff === 'last-response' && lastAssistantMessage) {
+        pi.sendMessage({
+          customType: 'branch-result',
+          content: lastAssistantMessage.message.content,
+          display: true,
+          details: { sourceEntryId: lastAssistantMessage.id },
+        }, { triggerTurn: true });
       }
 
       if (findActiveTask(ctx.sessionManager)) {
         pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
       }
 
-      ctx.ui.notify('Returned. Branch summary attached.', 'info');
+      const label = handoff === 'last-response' ? 'Last response attached.' : 'Branch summary attached.';
+      ctx.ui.notify(`Returned. ${label}`, 'info');
     },
   };
 }

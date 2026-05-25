@@ -520,6 +520,93 @@ describe('createReturnCommand', () => {
     // Task-done was appended, consuming the task
     assertNoActiveTask(ctx.sessionManager);
   });
+
+  it('injects last assistant message when checkpoint has handoff "last-response"', async () => {
+    const { pi, ctx, sm, sentCustomMessages, notifications } = makeHarness();
+
+    // Set up: user msg → assistant msg → checkpoint with last-response
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Here is my analysis...'));
+
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Working on it...'));
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('', ctx);
+
+    // navigateTree should be called with summarize: false
+    const nav = ctx.navigateTree as unknown as { calls: Array<{ args: [string, { summarize?: boolean }] }> };
+    // Not tracking calls directly, but we check sentCustomMessages
+
+    // Should have injected the last assistant message
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+    assert.strictEqual(sentCustomMessages[0].options?.triggerTurn, true);
+
+    assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
+  });
+
+  it('overrides checkpoint handoff with "/return last"', async () => {
+    const { pi, ctx, sm, sentCustomMessages } = makeHarness();
+
+    // Checkpoint with summary handoff
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Summary of work...'));
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'summary' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Final answer.'));
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('last', ctx);
+
+    // Should inject last response despite summary checkpoint
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+  });
+
+  it('overrides checkpoint handoff with "/return summary"', async () => {
+    const { pi, ctx, sm, sentCustomMessages, navigations } = makeHarness();
+
+    // Checkpoint with last-response handoff
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'work', timestamp: 0 });
+    sm.appendMessage(assistantMessage('Final answer.'));
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('summary', ctx);
+
+    // Should use summarize: true despite last-response checkpoint
+    assert.strictEqual(navigations.length, 1);
+    assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, true);
+
+    // No injection should occur
+    assert.strictEqual(sentCustomMessages.length, 0);
+  });
+
+  it('navigates without injecting when no assistant message exists on branch', async () => {
+    const { pi, ctx, sm, sentCustomMessages, notifications } = makeHarness();
+
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    // No assistant message on branch
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('', ctx);
+
+    // No injection — no assistant message to inject
+    assert.strictEqual(sentCustomMessages.length, 0);
+    assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
+  });
 });
 
 function assertNoActiveTask(sm: SessionManager): void {
@@ -781,6 +868,7 @@ describe('integration: edge cases from design spec', () => {
 function makeHarness() {
   const sm = SessionManager.inMemory();
   const sentMessages: string[] = [];
+  const sentCustomMessages: Array<{ customType: string; content: unknown; options?: unknown }> = [];
   const notifications: Array<{ message: string; type?: string }> = [];
   const navigations: Array<{ targetId: string; opts?: unknown }> = [];
   let cancelNextNav = false;
@@ -793,6 +881,10 @@ function makeHarness() {
       const text = typeof content === 'string' ? content : content.map((b) => b.text).join('');
       sm.appendMessage({ role: 'user', content: text, timestamp: Date.now() });
       sentMessages.push(text);
+    },
+    sendMessage(message: { customType: string; content: unknown; display?: boolean; details?: unknown }, options?: { triggerTurn?: boolean }) {
+      sentCustomMessages.push({ customType: message.customType, content: message.content, options });
+      sm.appendCustomMessageEntry(message.customType, message.content as string, message.display ?? true, message.details);
     },
   } as unknown as ExtensionAPI;
 
@@ -818,6 +910,8 @@ function makeHarness() {
     sm,
     pi,
     ctx,
+    sentMessages,
+    sentCustomMessages,
     sentMessages,
     notifications,
     navigations,
