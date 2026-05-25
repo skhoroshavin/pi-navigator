@@ -537,14 +537,10 @@ describe('createReturnCommand', () => {
     const cmd = createReturnCommand(pi);
     await cmd.handler('', ctx);
 
-    // navigateTree should be called with summarize: false
-    const nav = ctx.navigateTree as unknown as { calls: Array<{ args: [string, { summarize?: boolean }] }> };
-    // Not tracking calls directly, but we check sentCustomMessages
-
     // Should have injected the last assistant message
     assert.strictEqual(sentCustomMessages.length, 1);
     assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
-    assert.strictEqual(sentCustomMessages[0].options?.triggerTurn, true);
+    assert.strictEqual((sentCustomMessages[0].options as { triggerTurn?: boolean } | undefined)?.triggerTurn, true);
 
     assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
   });
@@ -977,7 +973,6 @@ function makeHarness() {
     ctx,
     sentMessages,
     sentCustomMessages,
-    sentMessages,
     notifications,
     navigations,
     setCancelNextNav(v: boolean) {

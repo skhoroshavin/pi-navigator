@@ -303,14 +303,16 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         handoff = 'summary';
       }
 
-      // Capture last assistant message before navigation (for last-response mode)
-      let lastAssistantMessage: SessionEntry | undefined;
+      // Capture last assistant message content before navigation (for last-response mode)
+      let lastAssistantContent: unknown;
+      let lastAssistantId: string | undefined;
       if (handoff === 'last-response') {
         const branch = ctx.sessionManager.getBranch();
         for (let i = branch.length - 1; i >= 0; i--) {
           const entry = branch[i];
-          if (entry.type === 'message' && entry.message?.role === 'assistant') {
-            lastAssistantMessage = entry;
+          if (entry.type === 'message' && (entry as SessionEntry & { message: { role: string } }).message.role === 'assistant') {
+            lastAssistantContent = (entry as SessionEntry & { message: { content: unknown } }).message.content;
+            lastAssistantId = entry.id;
             break;
           }
         }
@@ -322,12 +324,12 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
       if (result.cancelled) return;
 
       // Inject last assistant message after navigation
-      if (handoff === 'last-response' && lastAssistantMessage) {
+      if (handoff === 'last-response' && lastAssistantId) {
         pi.sendMessage({
           customType: 'branch-result',
-          content: lastAssistantMessage.message.content,
+          content: lastAssistantContent as string,
           display: true,
-          details: { sourceEntryId: lastAssistantMessage.id },
+          details: { sourceEntryId: lastAssistantId },
         }, { triggerTurn: true });
       }
 
