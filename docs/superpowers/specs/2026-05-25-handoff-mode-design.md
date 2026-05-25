@@ -44,9 +44,11 @@ Each command sets its own default handoff mode. Tasks are ignored by `/start-bra
 | `/start-task` (task context: fresh) | fresh | last-response | requires task |
 | `/start-task` (task context: branch) | branch | last-response | requires task |
 
-`/start-task` fails with a warning if no task is pending.
+`/start-task` fails with a warning if no task is pending. `/start-branch` and `/start-fresh` ignore any pending task — it stays queued for a future `/start-task` call.
 
 ### `/return` override
+
+The task (if any) is marked done (`TASK_DONE_ENTRY_TYPE`) on return regardless of handoff mode.
 
 `/return` reads the checkpoint's handoff mode. The user can override with a parameter:
 
