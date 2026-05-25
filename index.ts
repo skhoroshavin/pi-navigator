@@ -300,7 +300,18 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         for (let i = branch.length - 1; i >= 0; i--) {
           const entry = branch[i];
           if (isAssistantMessageEntry(entry)) {
-            lastAssistantContent = entry.message.content;
+            const rawContent = entry.message.content;
+            // Filter to only text blocks — thinking and toolCall blocks are not
+            // valid for custom_message content and cause provider errors (e.g.,
+            // DeepSeek rejects unrecognized content block variants).
+            if (Array.isArray(rawContent)) {
+              lastAssistantContent = rawContent.filter(
+                (block): block is { type: 'text'; text: string } =>
+                  typeof block === 'object' && block !== null && 'type' in block && block.type === 'text',
+              );
+            } else {
+              lastAssistantContent = rawContent;
+            }
             lastAssistantId = entry.id;
             break;
           }
@@ -316,7 +327,7 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
       if (handoff === 'last-response' && lastAssistantId) {
         pi.sendMessage({
           customType: 'branch-result',
-          // Cast through unknown: assistant message content blocks are structurally compatible with sendMessage's union type
+          // Content is filtered to only TextContent blocks (or original string)
           content: lastAssistantContent as unknown as string,
           display: true,
           details: { sourceEntryId: lastAssistantId },

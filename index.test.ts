@@ -594,6 +594,48 @@ describe('createReturnCommand', () => {
     assert.strictEqual(sentCustomMessages.length, 0);
   });
 
+  it('filters out thinking blocks from injected last-response content', async () => {
+    const { pi, ctx, sm, sentCustomMessages } = makeHarness();
+
+    // Assistant message with thinking + text blocks (as happens with thinking mode on)
+    sm.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    sm.appendMessage({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'Internal reasoning...' },
+        { type: 'text', text: 'Public response.' },
+      ],
+      timestamp: 0,
+      model: 'test',
+      provider: 'test',
+    } as Parameters<SessionManager['appendMessage']>[0]);
+
+    const leafId = sm.getLeafId()!;
+    sm.branch(leafId);
+    sm.appendCustomEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: leafId, handoff: 'last-response' });
+    sm.appendMessage({ role: 'user', content: 'task work', timestamp: 0 });
+    sm.appendMessage({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'Processing...' },
+        { type: 'text', text: 'Task result here.' },
+      ],
+      timestamp: 0,
+      model: 'test',
+      provider: 'test',
+    } as Parameters<SessionManager['appendMessage']>[0]);
+
+    const cmd = createReturnCommand(pi);
+    await cmd.handler('', ctx);
+
+    // Should inject only text blocks, not thinking blocks
+    assert.strictEqual(sentCustomMessages.length, 1);
+    const content = sentCustomMessages[0].content as Array<{ type: string; text: string }>;
+    assert.strictEqual(content.length, 1);
+    assert.strictEqual(content[0].type, 'text');
+    assert.strictEqual(content[0].text, 'Task result here.');
+  });
+
   it('navigates without injecting when no assistant message exists on branch', async () => {
     const { pi, ctx, sm, sentCustomMessages, notifications } = makeHarness();
 
