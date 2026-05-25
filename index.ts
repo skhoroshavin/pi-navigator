@@ -4,6 +4,7 @@ import {
   type ExtensionCommandContext,
   type RegisteredCommand,
   type SessionEntry,
+  type SessionMessageEntry,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 
@@ -27,7 +28,7 @@ export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
     description: 'Store a task prompt for a user-started navigation branch.',
     promptSnippet: 'Store a focused task prompt for a user-started navigation branch.',
     promptGuidelines: [
-      'Use push-task when a skill needs the user to start a focused branch workflow with /start-branch.',
+      'Use push-task when a skill needs the user to start a focused branch workflow with /start-task.',
     ],
     parameters: pushTaskParameters,
     async execute(_toolCallId, params, signal) {
@@ -38,7 +39,7 @@ export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
       pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt, context: params.context ?? 'fresh' });
 
       return {
-        content: [{ type: 'text', text: 'Task stored. Run `/start-branch` to begin from here.' }],
+        content: [{ type: 'text', text: 'Task stored. Run `/start-task` to begin.' }],
         details: {},
       };
     },
@@ -174,7 +175,7 @@ export function createStartTaskCommand(pi: ExtensionAPI): CommandOptions {
         pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'last-response' });
       } else {
         // Branch context — same as /start-branch
-        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'last-response' });
+        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId()!, handoff: 'last-response' });
       }
 
       pi.sendUserMessage(activeTask.data.prompt);
@@ -310,8 +311,8 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         const branch = ctx.sessionManager.getBranch();
         for (let i = branch.length - 1; i >= 0; i--) {
           const entry = branch[i];
-          if (entry.type === 'message' && (entry as SessionEntry & { message: { role: string } }).message.role === 'assistant') {
-            lastAssistantContent = (entry as SessionEntry & { message: { content: unknown } }).message.content;
+          if (isAssistantMessageEntry(entry)) {
+            lastAssistantContent = entry.message.content;
             lastAssistantId = entry.id;
             break;
           }
@@ -327,7 +328,7 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
       if (handoff === 'last-response' && lastAssistantId) {
         pi.sendMessage({
           customType: 'branch-result',
-          content: lastAssistantContent as string,
+          content: lastAssistantContent as any,
           display: true,
           details: { sourceEntryId: lastAssistantId },
         }, { triggerTurn: true });
@@ -337,10 +338,16 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
       }
 
-      const label = handoff === 'last-response' ? 'Last response attached.' : 'Branch summary attached.';
+      const injected = handoff === 'last-response' && !!lastAssistantId;
+      const label = injected ? 'Last response attached.' : handoff === 'last-response' ? 'No last response to attach.' : 'Branch summary attached.';
       ctx.ui.notify(`Returned. ${label}`, 'info');
     },
   };
+}
+
+/** Type guard: is the entry an assistant message with content? */
+function isAssistantMessageEntry(entry: SessionEntry): entry is SessionMessageEntry & { message: { role: 'assistant' } } {
+  return entry.type === 'message' && entry.message.role === 'assistant';
 }
 
 // ── Lookup utilities ──────────────────────────────────────────────
@@ -398,7 +405,7 @@ export const CHECKPOINT_ENTRY_TYPE = 'checkpoint';
 
 export interface CheckpointData {
   returnTo: string;
-  handoff: 'summary' | 'last-response';
+  handoff?: 'summary' | 'last-response';
 }
 
 /**

@@ -601,7 +601,7 @@ describe('createReturnCommand', () => {
 
     // No injection — no assistant message to inject
     assert.strictEqual(sentCustomMessages.length, 0);
-    assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
+    assertLastNotification(notifications, 'info', 'Returned. No last response to attach.');
   });
 });
 
@@ -881,6 +881,8 @@ describe('integration: /start-task fresh context', () => {
     // Should inject last response
     assert.strictEqual(sentCustomMessages.length, 1);
     assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+    const content = sentCustomMessages[0].content as Array<{ text: string }>;
+    assert.strictEqual(content[0].text, 'Found 3 bottlenecks: ...');
 
     assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
 
@@ -916,6 +918,8 @@ describe('integration: /start-task branch context', () => {
     // Should inject last response
     assert.strictEqual(sentCustomMessages.length, 1);
     assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+    const content2 = sentCustomMessages[0].content as Array<{ text: string }>;
+    assert.strictEqual(content2[0].text, 'Fixed the bug.');
   });
 });
 
