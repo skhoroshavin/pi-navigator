@@ -52,7 +52,7 @@ describe('createStartBranchCommand', () => {
     const n = assertLastNotification(notifications, 'info');
     assert.ok(n.message.includes('Ready to work'));
 
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     assert.strictEqual(checkpoint.returnTo, leafBefore);
   });
 
@@ -66,7 +66,7 @@ describe('createStartBranchCommand', () => {
     await cmd.handler('', ctx);
 
     assert.deepStrictEqual(sentMessages, ['Implement phase 1.']);
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     // returnTo is the leaf the checkpoint was created at (the task entry)
     assert.strictEqual(checkpoint.returnTo, taskLeafId);
 
@@ -97,7 +97,7 @@ describe('createStartFreshCommand', () => {
     assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
 
     // Checkpoint was still created
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     assert.strictEqual(checkpoint.returnTo, leafBefore);
   });
 
@@ -122,7 +122,7 @@ describe('createStartFreshCommand', () => {
     assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
 
     // Checkpoint should have been created with returnTo = departureLeafId
-    const checkpoint = assertCheckpoint(ctx.sessionManager);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'summary');
     assert.strictEqual(checkpoint.returnTo, departureLeafId);
 
     // Task prompt should have been injected
@@ -751,9 +751,12 @@ function assistantMessage(text: string): AppendMessageInput {
 
 type AppendMessageInput = Parameters<SessionManager['appendMessage']>[0];
 
-function assertCheckpoint(sm: SessionManager): CheckpointData {
+function assertCheckpoint(sm: SessionManager, expectedHandoff?: CheckpointData['handoff']): CheckpointData {
   const cp = getCheckpoint(sm);
   assert.ok(cp, 'Expected checkpoint, found none.');
+  if (expectedHandoff) {
+    assert.strictEqual(cp.handoff, expectedHandoff);
+  }
   return cp;
 }
 

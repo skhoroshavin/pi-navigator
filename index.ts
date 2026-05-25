@@ -53,7 +53,7 @@ export function createStartBranchCommand(pi: ExtensionAPI): CommandOptions {
       const activeTask = findActiveTask(ctx.sessionManager);
 
       // Store the current leaf as the return point
-      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId() });
+      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'summary' });
 
       if (activeTask) {
         pi.sendUserMessage(activeTask.data.prompt);
@@ -93,7 +93,7 @@ export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
       const result = await ctx.navigateTree(freshTargetId, { summarize: false });
       if (result.cancelled) return;
 
-      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId });
+      pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'summary' });
 
       if (activeTask) {
         pi.sendUserMessage(activeTask.data.prompt);
@@ -317,6 +317,7 @@ export const CHECKPOINT_ENTRY_TYPE = 'checkpoint';
 
 export interface CheckpointData {
   returnTo: string;
+  handoff: 'summary' | 'last-response';
 }
 
 /**
