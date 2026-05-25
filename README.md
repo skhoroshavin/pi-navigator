@@ -18,41 +18,19 @@ Pi has a session tree you can already navigate with `/tree`, so you can control 
 
 ### `/undo`
 
-Jump back to the previous user message so you can re-prompt from there. If you're already at a user message, `/undo` goes to the one before it.
-
-`/undo` is for fixing mistakes. You asked the wrong question, the LLM went down a tangent, you want to try a different prompt. `/undo` drops you at the last place you gave input. Similar to the same-named command in OpenCode. [Example](#fixing-a-wrong-turn).
+Jump back to the previous user message so you can re-prompt from there. Useful for fixing mistakes or rephrasing a question, when the LLM misunderstood or went down a tangent. Similar to the same-named command in OpenCode. [Example](#fixing-a-wrong-turn).
 
 ### `/start-branch`
 
-Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context.
-
-This saves a checkpoint at your current position in the session tree. You get a notification and can keep working. When you're done, `/return` jumps you back to the checkpoint with a summary, compressing the branch into a single message.
-
-`/start-branch` does **not** consume pending tasks. Tasks are exclusively handled by `/start-task`. See the [example](#spike-investigation).
+Mark your current position as a return point and keep working on the same branch. Use this for a spike, an investigation, or any focused piece of work inside your existing context. When you're done, use `/return` to jump back to the checkpoint with a summary, compressing the branch into a single message. [Example](#spike-investigation)
 
 ### `/start-fresh`
 
-Like `/start-branch`, but jumps to a fresh context first - the point in the session just before the first user message. The LLM sees a clean context. Your existing conversation is still there, just invisible to this branch.
-
-Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary.
-
-`/start-fresh` does **not** consume pending tasks. Tasks are exclusively handled by `/start-task`. See the [example](#fresh-context-review).
-
-### `/start-task`
-
-Start the active task as a subagent. Requires a pending task (from `push-task`). The task's result is returned verbatim — no summarization.
-
-The task's `context` parameter controls whether it runs in a fresh context or on the current branch:
-- `context: "fresh"` (default) — clean slate, like `/start-fresh`
-- `context: "branch"` — stays on current branch, like `/start-branch`
-
-When the task is done, `/return` injects the last assistant message directly into the parent context.
+Like `/start-branch`, but jumps to a fresh context first - the point in the session just before the first user message. The LLM sees a clean context. Your existing conversation is still there, just invisible to this branch. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. [Example](#fresh-context-review)
 
 ### `/return`
 
-Jump back to the nearest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
-
-Run this when your branch work is done and you want the findings folded into the main conversation. Shown in every [branching example](#spike-investigation).
+Jump back to the nearest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off. Run this when your branch work is done and you want the findings folded into the main conversation.
 
 **Override:** `/return last` injects the last assistant message verbatim (useful for subagent-style tasks). `/return summary` forces summarization regardless of checkpoint mode.
 
@@ -75,6 +53,16 @@ This stores a task entry in the session tree. Nothing else happens — no naviga
 When you later run `/start-task`, the command searches backward from the current leaf, finds the nearest pending task entry, and injects its prompt as the first message of the new branch. `/start-branch` and `/start-fresh` ignore any pending task — it stays queued for a future `/start-task` call. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
 
 Multiple tasks can stack. If the LLM calls `push-task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
+
+### `/start-task`
+
+Saves a checkpoint and starts the active task. Requires a pending task (from `push-task`). On `/return` the task's result (last response) is returned verbatim — no summarization.
+
+The task's `context` parameter controls whether it runs in a fresh context or on the current branch:
+- `context: "fresh"` (default) — clean slate, like `/start-fresh`
+- `context: "branch"` — stays on current branch, like `/start-branch`
+
+When the task is done, `/return` injects the last assistant message directly into the parent context.
 
 ### `/discard-task`
 
