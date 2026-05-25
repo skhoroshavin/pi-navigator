@@ -1,50 +1,20 @@
 import {
-  defineTool,
   type ExtensionAPI,
   type ExtensionCommandContext,
   type RegisteredCommand,
   type SessionEntry,
   type SessionMessageEntry,
-  type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 
-import { Type } from 'typebox';
-
 export default function registerNavigationCommands(pi: ExtensionAPI): void {
-  pi.registerTool(createPushTaskTool(pi));
   pi.registerCommand('start-branch', createStartBranchCommand(pi));
   pi.registerCommand('start-fresh', createStartFreshCommand(pi));
-  pi.registerCommand('start-task', createStartTaskCommand(pi));
   pi.registerCommand('return', createReturnCommand(pi));
-  pi.registerCommand('cancel', createCancelCommand(pi));
-  pi.registerCommand('discard-task', createDiscardTaskCommand(pi));
+  pi.registerCommand('cancel', createCancelCommand());
   pi.registerCommand('undo', createUndoCommand());
 }
 
-export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
-  return defineTool({
-    name: 'push-task',
-    label: 'Push Task',
-    description: 'Store a task prompt for a user-started navigation branch.',
-    promptSnippet: 'Store a focused task prompt for a user-started navigation branch.',
-    promptGuidelines: [
-      'Use push-task when a skill needs the user to start a focused branch workflow with /start-task.',
-    ],
-    parameters: pushTaskParameters,
-    async execute(_toolCallId, params, signal) {
-      if (signal?.aborted) {
-        throw new Error('Task storage aborted.');
-      }
 
-      pi.appendEntry(TASK_ENTRY_TYPE, { prompt: params.prompt, context: params.context ?? 'fresh' });
-
-      return {
-        content: [{ type: 'text', text: 'Task stored. Run `/start-task` to begin.' }],
-        details: {},
-      };
-    },
-  });
-}
 
 export function createStartBranchCommand(pi: ExtensionAPI): CommandOptions {
   return {
@@ -135,43 +105,9 @@ function findPreConversationEntry(
   return null;
 }
 
-export function createStartTaskCommand(pi: ExtensionAPI): CommandOptions {
-  return {
-    description: 'Start the active task as a subagent',
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      await ctx.waitForIdle();
 
-      const activeTask = findActiveTask(ctx.sessionManager);
-      if (!activeTask) {
-        ctx.ui.notify('No pending task. Use push-task first.', 'warning');
-        return;
-      }
 
-      const taskContext = activeTask.data.context ?? 'fresh';
-
-      if (taskContext === 'fresh') {
-        const departureLeafId = ctx.sessionManager.getLeafId()!;
-        const freshTargetId = findFreshTargetId(ctx.sessionManager);
-        if (!freshTargetId) {
-          ctx.ui.notify('No starting point found on current branch.', 'warning');
-          return;
-        }
-
-        const result = await ctx.navigateTree(freshTargetId, { summarize: false });
-        if (result.cancelled) return;
-
-        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'last-response' });
-      } else {
-        // Branch context — same as /start-branch
-        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId()!, handoff: 'last-response' });
-      }
-
-      pi.sendUserMessage(activeTask.data.prompt);
-    },
-  };
-}
-
-export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
+export function createCancelCommand(): CommandOptions {
   return {
     description: 'Return without summarizing the current task branch',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
@@ -187,33 +123,12 @@ export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
       const result = await ctx.navigateTree(checkpoint.data.returnTo, { summarize: false });
       if (result.cancelled) return;
 
-      if (findActiveTask(ctx.sessionManager)) {
-        pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
-      }
-
       ctx.ui.notify('Cancelled. Branch abandoned without summary.', 'info');
     },
   };
 }
 
-export function createDiscardTaskCommand(pi: ExtensionAPI): CommandOptions {
-  return {
-    description: 'Discard the active task without executing it',
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      await ctx.waitForIdle();
 
-      const activeTask = findActiveTask(ctx.sessionManager);
-      if (!activeTask) {
-        ctx.ui.notify('No pending task.', 'warning');
-        return;
-      }
-
-      pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
-
-      ctx.ui.notify('Task discarded.', 'info');
-    },
-  };
-}
 
 export function createUndoCommand(): CommandOptions {
   return {
@@ -334,10 +249,6 @@ export function createReturnCommand(pi: ExtensionAPI): CommandOptions {
         }, { triggerTurn: true });
       }
 
-      if (findActiveTask(ctx.sessionManager)) {
-        pi.appendEntry(TASK_DONE_ENTRY_TYPE, {});
-      }
-
       const injected = handoff === 'last-response' && !!lastAssistantId;
       const label = injected ? 'Last response attached.' : handoff === 'last-response' ? 'No last response to attach.' : 'Branch summary attached.';
       ctx.ui.notify(`Returned. ${label}`, 'info');
@@ -352,36 +263,7 @@ function isAssistantMessageEntry(entry: SessionEntry): entry is SessionMessageEn
 
 // ── Lookup utilities ──────────────────────────────────────────────
 
-function findActiveTask(
-  session: ReadonlySessionLike,
-): (SessionEntry & { data: TaskData }) | null {
-  const entries = session.getEntries();
-  const byId = new Map<string, SessionEntry>(entries.map((e) => [e.id, e]));
-  let skip = 0;
-  const leafId = session.getLeafId();
-  let current = leafId ? byId.get(leafId) : undefined;
 
-  while (current) {
-    if (current.type === 'custom' && current.customType === TASK_DONE_ENTRY_TYPE) {
-      skip++;
-    } else if (current.type === 'custom' && current.customType === TASK_ENTRY_TYPE) {
-      if (skip === 0) return current as SessionEntry & { data: TaskData };
-      skip--;
-    }
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-
-  return null;
-}
-
-export const TASK_ENTRY_TYPE = 'task';
-
-export const TASK_DONE_ENTRY_TYPE = 'task-done';
-
-export interface TaskData {
-  prompt: string;
-  context: 'fresh' | 'branch';
-}
 
 function findCheckpoint(
   session: ReadonlySessionLike,
@@ -421,10 +303,3 @@ export interface ReadonlySessionLike {
 
 type CommandOptions = Omit<RegisteredCommand, 'name' | 'sourceInfo'>;
 
-const pushTaskParameters = Type.Object({
-  prompt: Type.String({ description: 'Full prompt for the task, including all context and instructions.' }),
-  context: Type.Optional(Type.Union([
-    Type.Literal('fresh'),
-    Type.Literal('branch'),
-  ], { description: 'Context mode: "fresh" (clean slate, default) or "branch" (current branch).' })),
-});
