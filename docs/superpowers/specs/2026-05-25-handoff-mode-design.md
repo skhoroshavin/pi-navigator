@@ -13,7 +13,7 @@ Checkpoints store a `handoff` field that determines how `/return` delivers the b
 ```typescript
 interface CheckpointData {
   returnTo: string;
-  handoff: "summary" | "last-response";
+  handoff?: "summary" | "last-response";  // optional for backward compat with old checkpoints
 }
 ```
 
