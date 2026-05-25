@@ -34,11 +34,23 @@ Like `/start-branch`, but jumps to a fresh context first - the point in the sess
 
 Useful for reviews, design work, or anything where previous conversation shouldn't influence the result. The checkpoint points back to where you were on the main branch, so `/return` always brings you home with a summary. See the [example](#fresh-context-review).
 
+### `/start-task`
+
+Start the active task as a subagent. Requires a pending task (from `push-task`). The task's result is returned verbatim — no summarization.
+
+The task's `context` parameter controls whether it runs in a fresh context or on the current branch:
+- `context: "fresh"` (default) — clean slate, like `/start-fresh`
+- `context: "branch"` — stays on current branch, like `/start-branch`
+
+When the task is done, `/return` injects the last assistant message directly into the parent context.
+
 ### `/return`
 
 Jump back to the nearest checkpoint and attach a branch summary. The LLM on the main branch reads the summary and picks up where you left off.
 
 Run this when your branch work is done and you want the findings folded into the main conversation. Shown in every [branching example](#spike-investigation).
+
+**Override:** `/return last` injects the last assistant message verbatim (useful for subagent-style tasks). `/return summary` forces summarization regardless of checkpoint mode.
 
 ### `/cancel`
 
@@ -50,9 +62,13 @@ The commands above work on their own. You can branch, return, and undo without t
 
 ### How it works
 
-The LLM calls `push-task({ prompt: "..." })`. This stores a custom entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-branch` or `/start-fresh` to begin."
+The LLM calls `push-task({ prompt: "...", context: "fresh" })`. The `context` parameter is optional (defaults to `"fresh"`):
+- `"fresh"` — task runs in a clean context (via `/start-task`)
+- `"branch"` — task runs on the current branch (via `/start-task`)
 
-When you later run `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest pending task entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
+This stores a task entry in the session tree. Nothing else happens — no navigation, no branching, no context switch. The tool says "Task stored. Run `/start-task` to begin."
+
+When you later run `/start-task`, `/start-branch` or `/start-fresh`, the command searches backward from the current leaf, finds the nearest pending task entry, and injects its prompt as the first message of the new branch. Later, when you run `/return`, a `task-done` marker is injected, preventing the task from firing again. To get a better idea of how it could be useful, see an [example](#skill-driven-review).
 
 Multiple tasks can stack. If the LLM calls `push-task` twice before you run any `/start-*`, the second one (closer to the leaf) is picked up first. The first one waits underneath until that one is consumed.
 
@@ -170,11 +186,11 @@ LLM:     I have written the spec. Before we proceed, let me queue
 LLM:     [calls push-task({ prompt: "Review docs/specs/feature-design.md
          for completeness, consistency, scope, and YAGNI. Flag
          anything that needs clarification. Ask user to run /return
-         when done." })]
+         when done.", context: "fresh" })]
 
-LLM:     Task stored. Run /start-fresh for a fresh review.
+LLM:     Task stored. Run /start-task for a fresh review.
 
-You:     /start-fresh
+You:     /start-task
 Pi:      [jumps to pre-conversation point, injects task prompt]
 
 LLM:     [reads spec with no prior conversation bias]
