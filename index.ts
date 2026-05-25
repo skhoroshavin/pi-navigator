@@ -48,31 +48,23 @@ export function createPushTaskTool(pi: ExtensionAPI): ToolDefinition {
 
 export function createStartBranchCommand(pi: ExtensionAPI): CommandOptions {
   return {
-    description: 'Start the active task from the current branch',
+    description: 'Start a focused branch from the current position',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
-
-      const activeTask = findActiveTask(ctx.sessionManager);
 
       // Store the current leaf as the return point
       pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'summary' });
 
-      if (activeTask) {
-        pi.sendUserMessage(activeTask.data.prompt);
-      } else {
-        ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
-      }
+      ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
     },
   };
 }
 
 export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
   return {
-    description: 'Start the active task in a fresh context',
+    description: 'Start a focused branch in a fresh context',
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       await ctx.waitForIdle();
-
-      const activeTask = findActiveTask(ctx.sessionManager);
 
       // Record departure leaf before navigation
       const departureLeafId = ctx.sessionManager.getLeafId()!;
@@ -88,11 +80,7 @@ export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
 
       pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'summary' });
 
-      if (activeTask) {
-        pi.sendUserMessage(activeTask.data.prompt);
-      } else {
-        ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
-      }
+      ctx.ui.notify('Ready to work on this branch. Use /return or /cancel when done.', 'info');
     },
   };
 }
