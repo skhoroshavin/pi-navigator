@@ -75,19 +75,10 @@ export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
       // Record departure leaf before navigation
       const departureLeafId = ctx.sessionManager.getLeafId()!;
 
-      // Find the first model-visible entry on the current branch.
-      // If none exist, the branch has no LLM context — use the branch root as fallback.
-      const firstVisible = findPreConversationEntry(ctx.sessionManager);
-      let freshTargetId: string;
-      if (firstVisible) {
-        freshTargetId = firstVisible.parentId ?? firstVisible.id;
-      } else {
-        const branch = ctx.sessionManager.getBranch();
-        if (branch.length === 0) {
-          ctx.ui.notify('No starting point found on current branch.', 'warning');
-          return;
-        }
-        freshTargetId = branch[0].parentId ?? branch[0].id;
+      const freshTargetId = findFreshTargetId(ctx.sessionManager);
+      if (!freshTargetId) {
+        ctx.ui.notify('No starting point found on current branch.', 'warning');
+        return;
       }
 
       const result = await ctx.navigateTree(freshTargetId, { summarize: false });
@@ -102,6 +93,24 @@ export function createStartFreshCommand(pi: ExtensionAPI): CommandOptions {
       }
     },
   };
+}
+
+/**
+ * Find the target ID for navigating to a fresh context.
+ * Returns the parent of the first model-visible entry, or the branch root as fallback.
+ * Returns null if no valid target is found.
+ */
+function findFreshTargetId(session: ReadonlySessionLike): string | null {
+  const branch = session.getBranch();
+  if (branch.length === 0) return null;
+
+  const firstVisible = findPreConversationEntry(session);
+  if (firstVisible) {
+    return firstVisible.parentId ?? firstVisible.id;
+  }
+
+  // Fallback: use branch root's parent (or the root itself if no parent)
+  return branch[0].parentId ?? branch[0].id;
 }
 
 /**
