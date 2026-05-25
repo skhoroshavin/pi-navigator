@@ -858,6 +858,71 @@ describe('integration: edge cases from design spec', () => {
   });
 });
 
+describe('integration: /start-task fresh context', () => {
+  it('completes /start-task → work → /return with last-response injection', async () => {
+    const { pi, ctx, sentMessages, sentCustomMessages, notifications } = makeHarness();
+
+    // Main conversation
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'main work', timestamp: 0 });
+    ctx.sessionManager.appendMessage(assistantMessage('working on main...'));
+
+    // LLM stores a task
+    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Analyze performance.' });
+
+    // /start-task
+    const startCmd = createStartTaskCommand(pi);
+    await startCmd.handler('', ctx);
+
+    assert.deepStrictEqual(sentMessages, ['Analyze performance.']);
+
+    // Simulate work on task branch
+    ctx.sessionManager.appendMessage(assistantMessage('Found 3 bottlenecks: ...'));
+
+    // /return
+    const returnCmd = createReturnCommand(pi);
+    await returnCmd.handler('', ctx);
+
+    // Should inject last response
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+
+    assertLastNotification(notifications, 'info', 'Returned. Last response attached.');
+
+    // Task should be consumed
+    assertNoActiveTask(ctx.sessionManager);
+  });
+});
+
+describe('integration: /start-task branch context', () => {
+  it('completes /start-task branch → work → /return with last-response injection', async () => {
+    const { pi, ctx, sentMessages, sentCustomMessages } = makeHarness();
+
+    // Main conversation
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'main work', timestamp: 0 });
+    ctx.sessionManager.appendMessage(assistantMessage('working...'));
+
+    // LLM stores a branch-context task
+    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Quick fix.', context: 'branch' });
+
+    // /start-task
+    const startCmd = createStartTaskCommand(pi);
+    await startCmd.handler('', ctx);
+
+    assert.deepStrictEqual(sentMessages, ['Quick fix.']);
+
+    // Simulate work
+    ctx.sessionManager.appendMessage(assistantMessage('Fixed the bug.'));
+
+    // /return
+    const returnCmd = createReturnCommand(pi);
+    await returnCmd.handler('', ctx);
+
+    // Should inject last response
+    assert.strictEqual(sentCustomMessages.length, 1);
+    assert.strictEqual(sentCustomMessages[0].customType, 'branch-result');
+  });
+});
+
 /**
  * Thin harness: real SessionManager for entry tree operations,
  * spy objects for pi/ctx methods that interact with Pi's runtime.
