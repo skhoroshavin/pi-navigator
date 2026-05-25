@@ -9,6 +9,7 @@ import registerNavigationCommands, {
   createReturnCommand,
   createPushTaskTool,
   createStartFreshCommand,
+  createStartTaskCommand,
   createCancelCommand,
   createDiscardTaskCommand,
   createUndoCommand,
@@ -171,6 +172,79 @@ describe('createStartFreshCommand', () => {
 
     assert.strictEqual(navigations[0].targetId, firstUserMsgId);
     // Pi handles parentId === null by calling resetLeaf(); checkpoint will be a sibling
+  });
+});
+
+describe('createStartTaskCommand', () => {
+  it('notifies when there is no pending task', async () => {
+    const { pi, ctx, notifications } = makeHarness();
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 0 });
+
+    const cmd = createStartTaskCommand(pi);
+    await cmd.handler('', ctx);
+
+    assertLastNotification(notifications, 'warning', 'No pending task. Use push-task first.');
+  });
+
+  it('navigates to fresh context and injects task prompt with handoff "last-response"', async () => {
+    const { pi, ctx, sentMessages, navigations } = makeHarness();
+
+    const rootUserMsgId = ctx.sessionManager.appendMessage({ role: 'user', content: 'main work', timestamp: 0 });
+    ctx.sessionManager.appendMessage(assistantMessage('working...'));
+    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Review spec for issues.' });
+    const departureLeafId = ctx.sessionManager.getLeafId()!;
+
+    const cmd = createStartTaskCommand(pi);
+    await cmd.handler('', ctx);
+
+    // Navigated to fresh context
+    assert.strictEqual(navigations.length, 1);
+    assert.strictEqual(navigations[0].targetId, rootUserMsgId);
+    assert.strictEqual((navigations[0].opts as { summarize?: boolean })?.summarize, false);
+
+    // Checkpoint with handoff: "last-response"
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'last-response');
+    assert.strictEqual(checkpoint.returnTo, departureLeafId);
+
+    // Task prompt injected
+    assert.deepStrictEqual(sentMessages, ['Review spec for issues.']);
+  });
+
+  it('stays on branch and creates checkpoint with handoff "last-response"', async () => {
+    const { pi, ctx, sentMessages, navigations } = makeHarness();
+
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'main work', timestamp: 0 });
+    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Quick fix.', context: 'branch' });
+    const leafBefore = ctx.sessionManager.getLeafId()!;
+
+    const cmd = createStartTaskCommand(pi);
+    await cmd.handler('', ctx);
+
+    // No navigation for branch context
+    assert.strictEqual(navigations.length, 0);
+
+    // Checkpoint with handoff: "last-response"
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'last-response');
+    assert.strictEqual(checkpoint.returnTo, leafBefore);
+
+    // Task prompt injected
+    assert.deepStrictEqual(sentMessages, ['Quick fix.']);
+  });
+
+  it('defaults to fresh context when task has no explicit context', async () => {
+    const { pi, ctx, navigations } = makeHarness();
+
+    ctx.sessionManager.appendMessage({ role: 'user', content: 'start', timestamp: 0 });
+    // Task without explicit context field
+    ctx.sessionManager.appendCustomEntry(TASK_ENTRY_TYPE, { prompt: 'Default context task.' });
+
+    const cmd = createStartTaskCommand(pi);
+    await cmd.handler('', ctx);
+
+    // Should navigate (fresh context)
+    assert.strictEqual(navigations.length, 1);
+    const checkpoint = assertCheckpoint(ctx.sessionManager, 'last-response');
+    assert.ok(checkpoint);
   });
 });
 
@@ -454,7 +528,7 @@ function assertNoActiveTask(sm: SessionManager): void {
 }
 
 describe('registration', () => {
-  it('registers the push-task tool and all six navigation commands', () => {
+  it('registers the push-task tool and all seven navigation commands', () => {
     const registered: Array<{ type: string; name: string; description?: string }> = [];
     const pi = {
       registerTool: (tool: { name: string; label: string; description: string }) =>
@@ -470,6 +544,7 @@ describe('registration', () => {
       { type: 'tool', name: 'push-task', description: 'Store a task prompt for a user-started navigation branch.' },
       { type: 'command', name: 'start-branch', description: 'Start the active task from the current branch' },
       { type: 'command', name: 'start-fresh', description: 'Start the active task in a fresh context' },
+      { type: 'command', name: 'start-task', description: 'Start the active task as a subagent' },
       { type: 'command', name: 'return', description: 'Return to the checkpoint for the current task branch' },
       { type: 'command', name: 'cancel', description: 'Return without summarizing the current task branch' },
       { type: 'command', name: 'discard-task', description: 'Discard the active task without executing it' },

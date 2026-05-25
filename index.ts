@@ -13,6 +13,7 @@ export default function registerNavigationCommands(pi: ExtensionAPI): void {
   pi.registerTool(createPushTaskTool(pi));
   pi.registerCommand('start-branch', createStartBranchCommand(pi));
   pi.registerCommand('start-fresh', createStartFreshCommand(pi));
+  pi.registerCommand('start-task', createStartTaskCommand(pi));
   pi.registerCommand('return', createReturnCommand(pi));
   pi.registerCommand('cancel', createCancelCommand(pi));
   pi.registerCommand('discard-task', createDiscardTaskCommand(pi));
@@ -143,6 +144,42 @@ function findPreConversationEntry(
   }
 
   return null;
+}
+
+export function createStartTaskCommand(pi: ExtensionAPI): CommandOptions {
+  return {
+    description: 'Start the active task as a subagent',
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      await ctx.waitForIdle();
+
+      const activeTask = findActiveTask(ctx.sessionManager);
+      if (!activeTask) {
+        ctx.ui.notify('No pending task. Use push-task first.', 'warning');
+        return;
+      }
+
+      const taskContext = activeTask.data.context ?? 'fresh';
+
+      if (taskContext === 'fresh') {
+        const departureLeafId = ctx.sessionManager.getLeafId()!;
+        const freshTargetId = findFreshTargetId(ctx.sessionManager);
+        if (!freshTargetId) {
+          ctx.ui.notify('No starting point found on current branch.', 'warning');
+          return;
+        }
+
+        const result = await ctx.navigateTree(freshTargetId, { summarize: false });
+        if (result.cancelled) return;
+
+        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: departureLeafId, handoff: 'last-response' });
+      } else {
+        // Branch context — same as /start-branch
+        pi.appendEntry(CHECKPOINT_ENTRY_TYPE, { returnTo: ctx.sessionManager.getLeafId(), handoff: 'last-response' });
+      }
+
+      pi.sendUserMessage(activeTask.data.prompt);
+    },
+  };
 }
 
 export function createCancelCommand(pi: ExtensionAPI): CommandOptions {
